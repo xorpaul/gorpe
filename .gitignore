@@ -1,10 +1,12 @@
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
+gorpe
 gorped
 *.o
 *.a
 *.so
 *.pem
 *.gcfg
+*.swp
 
 # Folders
 _obj
