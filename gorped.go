@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-	"flag"
+	//"flag"
   "strings"
   "syscall"
   "os"
@@ -18,7 +18,13 @@ import (
 
 )
 
-var commands = make(map[string]string)
+var mainCfgSection = make(map[string]string)
+var commandsCfgSection = make(map[string]string)
+
+type ConfigSettings struct {
+  main map[string]string
+  commands map[string]string
+}
 
 type CheckResult struct {
   text []byte
@@ -27,6 +33,8 @@ type CheckResult struct {
 
 func httpHandler(w http.ResponseWriter, req *http.Request) {
 	log.Print("Request: ", req)
+  ip := strings.Split(req.RemoteAddr,":")[0]
+	log.Print("Incoming request from IP: ", ip)
 	log.Print("Request path: ", req.URL.Path)
 
   reqParts := strings.Split(req.URL.Path[1:], "/")
@@ -38,32 +46,36 @@ func httpHandler(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 
-  if _, ok := commands[command]; ok {
-    argCount := strings.Count(commands[command], "$ARG$")
+  if _, ok := commandsCfgSection[command]; ok {
+    argCount := strings.Count(commandsCfgSection[command], "$ARG$")
+    log.Printf("Found %q command arguments in this command", len(cmdArguments))
     if argCount > len(cmdArguments) {
       w.Write([]byte("Too few command arguments!"))
     } else {
-      cmdString, cmdStringFromConfig := "", commands[command]
-      log.Print("Got command from config: ", cmdStringFromConfig)
+      cmdString := commandsCfgSection[command]
+      log.Print("Got command from config: ", cmdString)
       for _, arg := range cmdArguments {
         // TODO: filter nasty chars
         if arg != "" {
-          cmdString = strings.Replace(cmdStringFromConfig, "$ARG$", arg, 1)
+          cmdString = strings.Replace(cmdString, "$ARG$", arg, 1)
           log.Printf("Replacing $ARG$ with %q results in %q", arg, cmdString)
-          cmdStringFromConfig = cmdString
         }
       }
       log.Print("Replacing arguments and executing: ", cmdString)
       cr := execCommand(cmdString)
+      log.Print("Last char: ", cr.text[len(cr.text)-1])
+      // Making sure that the check script output ends with a newline char
+      if cr.text[len(cr.text)-1] != 10 {
+        cr.text = append(cr.text, "\n"...)
+      }
       output := append(cr.text, "Returncode: "...)
       output = strconv.AppendInt(output, int64(cr.returncode), 10)
-      //log.Print("rc: ", cr.returncode)
       w.Write(output)
-      //w.Write([]byte(string(cr.returncode)))
     }
   } else {
-    //w.Write([]byte("Command ", uri, "not found!"))
-    w.Write([]byte("Command not found!"))
+    text := append([]byte("UKNOWN: Command "), command...)
+    text = append(text, " not found!\nReturncode: 0"...)
+    w.Write(text)
   }
 
 }
@@ -71,23 +83,31 @@ func httpHandler(w http.ResponseWriter, req *http.Request) {
 func execCommand(cmdString string) CheckResult {
   returncode := 3
   parts := strings.Fields(cmdString)
-  head := parts[0]
-  parts = parts[1:len(parts)]
-	//log.Print("head: ", head)
-	//log.Printf("parts are %q: ", parts)
-  cmd := exec.Command(head, parts...)
-  out, err := cmd.Output()
-  //if err != nil && err != "exit status 3" {
-  //  log.Print("err: ", err)
-  //  log.Print("out: ", string(out))
-  //  out = []byte("unknown")
-  //} else {
-  if msg, ok := err.(*exec.ExitError); ok { // there is error code
-    returncode = msg.Sys().(syscall.WaitStatus).ExitStatus()
-  } else {
-    returncode = 0
-  }
+  checkScript := parts[0]
+  checkArguments := parts[1:len(parts)]
+	log.Print("checkScript: ", checkScript)
+	log.Printf("checkArguments are %q: ", checkArguments)
+  //if _, err := os.Stat(checkScript); os.IsNotExist(err) {
+  //  return CheckResult{[]byte("UKNOWN: unknown output"), 3}
   //}
+  //info, _ := os.Stat(checkScript)
+  //mode := info.Mode()
+  //log.Print("mode: ", mode & 0111)
+  out, err := exec.Command(checkScript, checkArguments...).Output()
+
+  if err != nil {
+    log.Print("err: ", err)
+    if out == nil {
+      out = []byte("UKNOWN: unknown output\n")
+    }
+    log.Print("out: ", string(out))
+  } else {
+    if msg, ok := err.(*exec.ExitError); ok { // there is error code
+      returncode = msg.Sys().(syscall.WaitStatus).ExitStatus()
+    } else {
+      returncode = 0
+    }
+  }
 
 	log.Print("Got output: ", string(out[:]))
 	log.Print("Got return code: ", returncode)
@@ -95,45 +115,46 @@ func execCommand(cmdString string) CheckResult {
   return CheckResult{out, returncode}
 }
 
-func readConfigfile(configFile string) map[string]string {
+func readConfigfile(configFile string) ConfigSettings {
   //res := &struct{ Commands map[string] string }{}
   var cfg = &struct {
+    Main struct {
+      gcfg.Idxer
+      Vals map[gcfg.Idx]*string
+    }
     Commands struct {
       gcfg.Idxer
       Vals map[gcfg.Idx]*string
     }
   }{}
   if err := gcfg.ReadFileInto(cfg, configFile); err != nil {
-		panic(err)
+    log.Print("There was an error parsing the configfile:", err)
 	}
 
-  config := &cfg.Commands
-  //var commands = make(map[string]string)
+  cfgMain := &cfg.Main
+  log.Print("Found main config settings:")
+  for _, n := range cfgMain.Names() {
+    log.Print(n, " = ", *cfgMain.Vals[cfgMain.Idx(n)])
+    mainCfgSection[n] = *cfgMain.Vals[cfgMain.Idx(n)]
+  }
+
+  cfgCommands := &cfg.Commands
   // Names(): iterate over variables with undefined order and case
-	for _, n := range config.Names() {
-		log.Print(n, " and ", *config.Vals[config.Idx(n)])
-    commands[n] = *config.Vals[config.Idx(n)]
-	}
+  log.Print("Found commands config settings:")
+  for _, n := range cfgCommands.Names() {
+    log.Print(n, " = ", *cfgCommands.Vals[cfgCommands.Idx(n)])
+    commandsCfgSection[n] = *cfgCommands.Vals[cfgCommands.Idx(n)]
+  }
 
-  return commands
+  return ConfigSettings{mainCfgSection, commandsCfgSection}
 }
 
 func main() {
 
-  var (
-    flagListenIp   = flag.String("listenIp", "", "IP to listen for incoming connections.")
-    flagListenPort = flag.String("listenPort", "10443", "Port to listen for incoming connections.")
-  )
-
-  var commands = readConfigfile("config.gcfg")
-  log.Print("found commands: ", commands)
+  configSettings := readConfigfile("config.gcfg")
+  log.Print("found commands: ", configSettings.commands)
 
 
-  // config settings
-  var config = map[string]string{
-    "listenIp": *flagListenIp,
-    "listenPort": *flagListenPort,
-  }
   // check if we need to generate certificates
   var certFilenames = map[string]string{
     "cert": "./cert.pem",
@@ -153,11 +174,8 @@ func main() {
 
 
 	http.HandleFunc("/", httpHandler)
-//	http.HandleFunc("/warning", execTest("warning"))
-//	http.HandleFunc("/critical", execTest("critical"))
-//	http.HandleFunc("/unknown", execTest("unknown"))
-	log.Printf("Listening on port %s. Go to https://127.0.0.1:%s/", config["listenPort"], config["listenPort"])
-  err := spdy.ListenAndServeSpdyOnly(":"+config["listenPort"], certFilenames["cert"], certFilenames["key"], nil)
+	log.Printf("Listening on port %s. Go to https://%s:%s/", configSettings.main["server_port"], configSettings.main["server_address"], configSettings.main["server_port"])
+  err := spdy.ListenAndServeSpdyOnly(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
 	if err != nil {
 		log.Fatal(err)
 	}
