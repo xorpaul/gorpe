@@ -13,9 +13,9 @@ import (
 	//"html/template"
 
 	"github.com/xorpaul/gencerts"
-	"github.com/SlyMarbo/spdy"
+	//"github.com/SlyMarbo/spdy"
   "code.google.com/p/gcfg"
-
+  "github.com/kballard/go-shellquote"
 )
 
 var mainCfgSection = make(map[string]string)
@@ -82,17 +82,29 @@ func httpHandler(w http.ResponseWriter, req *http.Request) {
 
 func execCommand(cmdString string) CheckResult {
   returncode := 3
-  parts := strings.Fields(cmdString)
+  parts := strings.SplitN(cmdString, " ", 2)
   checkScript := parts[0]
-  checkArguments := parts[1:len(parts)]
-	log.Print("checkScript: ", checkScript)
-	log.Printf("checkArguments are %q: ", checkArguments)
+  checkArguments := []string{}
+  if len(parts) > 1 {
+    //checkArguments, err := shellquote.Split(strings.Join(parts[1:len(parts)], " "))
+    foobar, err := shellquote.Split(parts[1])
+    if err != nil {
+      log.Print("err: ", err)
+    } else {
+      checkArguments = foobar
+    }
+    log.Printf("checkArguments are %q: ", checkArguments)
+  }
+  log.Print("checkScript: ", checkScript)
+    log.Printf("checkArguments are %q: ", checkArguments)
   //if _, err := os.Stat(checkScript); os.IsNotExist(err) {
   //  return CheckResult{[]byte("UKNOWN: unknown output"), 3}
   //}
   //info, _ := os.Stat(checkScript)
   //mode := info.Mode()
   //log.Print("mode: ", mode & 0111)
+  //log.Print("arg1: ", checkArguments[len(checkArguments)-1])
+
   out, err := exec.Command(checkScript, checkArguments...).Output()
 
   if err != nil {
@@ -175,8 +187,9 @@ func main() {
 
 	http.HandleFunc("/", httpHandler)
 	log.Printf("Listening on port %s. Go to https://%s:%s/", configSettings.main["server_port"], configSettings.main["server_address"], configSettings.main["server_port"])
-  err := spdy.ListenAndServeSpdyOnly(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+  //err := spdy.ListenAndServeSpdyOnly(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
+  //err := http.ListenAndServeTLS(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
 }
