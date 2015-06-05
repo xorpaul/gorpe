@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
+	"io"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -19,6 +22,8 @@ import (
 var mainCfgSection = make(map[string]string)
 var commandsCfgSection = make(map[string]string)
 var allowedHosts []string
+var allowedPushHosts []string
+var uploadDir string
 
 // ConfigSettings contianss the key value pairs from the config file
 type ConfigSettings struct {
@@ -32,26 +37,30 @@ type CheckResult struct {
 	returncode int
 }
 
-func httpHandler(w http.ResponseWriter, req *http.Request) {
-	ip := strings.Split(req.RemoteAddr, ":")[0]
-	Debugf("Incoming request from IP: ", ip)
+func httpHandler(w http.ResponseWriter, r *http.Request) {
+	ip := strings.Split(r.RemoteAddr, ":")[0]
+	method := r.Method
+	Debugf("Incoming " + method + " request from IP: " + ip)
 
 	allowed := false
-	for _, allowedHost := range allowedHosts {
-		if ip == allowedHost {
-			allowed = true
+	switch method {
+	case "GET":
+		for _, allowedHost := range allowedHosts {
+			if ip == allowedHost {
+				allowed = true
+			}
 		}
-	}
+		if !allowed {
+			Debugf("Incoming IP " + ip + " not in allowed_hosts config setting!")
+			abortText := "Your IP " + ip + " is not allowed to query anything from me!\n"
+			abortText += "Result Code: 3\n"
+			w.Write([]byte(abortText))
+			return
+		}
 
-	if !allowed {
-		Debugf("Incoming IP not in allowed_hosts config setting!")
-		abortText := "Your IP " + ip + " is not allowed to query anything from me!\n"
-		abortText += "Result Code: 3\n"
-		w.Write([]byte(abortText))
-	} else {
-		Debugf("Request path: ", req.URL.Path)
+		Debugf("Request path: ", r.URL.Path)
 
-		reqParts := strings.Split(req.URL.Path[1:], "/")
+		reqParts := strings.Split(r.URL.Path[1:], "/")
 		Debugf("Request path parts are: %q", reqParts)
 		command := reqParts[0]
 		Debugf("Found command: ", command)
@@ -92,6 +101,82 @@ func httpHandler(w http.ResponseWriter, req *http.Request) {
 			text = append(text, " not found!\nReturncode: 0"...)
 			w.Write(text)
 		}
+	case "POST":
+		for _, allowedPushHost := range allowedPushHosts {
+			Debugf("comparing ", ip, " == ", allowedPushHost)
+			if ip == allowedPushHost {
+				allowed = true
+			}
+		}
+		if !allowed {
+			Debugf("Incoming IP " + ip + " not in allowed_push_hosts config setting!")
+			abortText := "Your IP " + ip + " is not allowed to upload!\n"
+			abortText += "Result Code: 3\n"
+			w.Write([]byte(abortText))
+			return
+		}
+
+		//get the multipart reader for the request.
+		reader, err := r.MultipartReader()
+		if err != nil {
+			Debugf("Error while reading the Upload request: ", err)
+			abortText := "Error while reading the Upload request!\n"
+			abortText += "Result Code: 3\n"
+			w.Write([]byte(abortText))
+			return
+		}
+
+		//copy each part to destination.
+		fileName := ""
+		sha256sum := ""
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			fileName = part.FileName()
+			//if part.FileName() is empty, skip this iteration.
+			if fileName == "" {
+				continue
+			}
+			dst, err := os.Create(uploadDir + fileName)
+			defer dst.Close()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			// get sha256 checksum
+			hash := sha256.New()
+			target := io.TeeReader(part, hash)
+			if _, err := io.Copy(dst, target); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			sha256sum = hex.EncodeToString(hash.Sum(nil))
+
+			// ensure that the file is executable
+			if err := os.Chmod(uploadDir+fileName, 0775); err != nil {
+				Debugf("Error while changing permissions", err)
+			}
+
+		}
+
+		// add new file to running config
+		checkCommand := r.URL.Path[1:]
+		commandsCfgSection[checkCommand] = uploadDir + fileName
+
+		Debugf("Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
+		text := "File " + fileName + " uploaded successfully, sha256sum: " + sha256sum + "\n"
+		text += "Result Code: 0\n"
+		w.Write([]byte(text))
+		return
+
+	default:
+		Debugf("Incoming HTTP method " + method + " from IP " + ip + " not supported!")
+		abortText := "HTTP method " + method + " not supported!\n"
+		abortText += "Result Code: 3\n"
+		w.Write([]byte(abortText))
+		return
 	}
 
 }
@@ -137,8 +222,9 @@ func execCommand(cmdString string) CheckResult {
 	return CheckResult{out, returncode}
 }
 
+// readConfigfile creates the mainCfgSection and commandsCfgSection structs
+// from the gorpe config file
 func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
-	//res := &struct{ Commands map[string] string }{}
 	var cfg = &struct {
 		Main struct {
 			gcfg.Idxer
@@ -170,7 +256,39 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 		Debugf(n, " = ", *cfgMain.Vals[cfgMain.Idx(n)])
 	}
 
-	allowedHosts = strings.Split(mainCfgSection["allowed_hosts"], ",")
+	if allowed_hosts, ok := mainCfgSection["allowed_hosts"]; ok {
+		allowedHosts = strings.Split(allowed_hosts, ",")
+		Debugf("allowedHosts:", allowedHosts)
+	} else {
+		log.Print("allowed_hosts config setting missing! Exiting!")
+		os.Exit(1)
+	}
+
+	// TODO: make upload feature optional
+	if allowed_push_hosts, ok := mainCfgSection["allowed_push_hosts"]; ok {
+		allowedPushHosts = strings.Split(allowed_push_hosts, ",")
+		Debugf("allowedPushHosts:", allowedPushHosts)
+	} else {
+		Debugf("No push hosts for check upload configured!")
+	}
+
+	// TODO: make upload feature optional
+	if upload_dir, ok := mainCfgSection["upload_dir"]; ok {
+		uploadDir = upload_dir
+		Debugf("uploadDir:", uploadDir)
+	} else {
+		Debugf("No upload_dir configured!")
+	}
+
+	// TODO: make upload feature optional
+	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
+		log.Printf("upload_dir '%s' inaccessible", uploadDir)
+		os.Exit(1)
+	} else {
+		if !strings.HasSuffix(uploadDir, "/") {
+			uploadDir = uploadDir + "/"
+		}
+	}
 
 	cfgCommands := &cfg.Commands
 	// Names(): iterate over variables with undefined order and case
