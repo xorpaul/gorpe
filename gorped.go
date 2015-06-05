@@ -107,7 +107,6 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	case "POST":
 		for _, allowedPushHost := range allowedPushHosts {
-			Debugf(rid, "comparing ", ip, " == ", allowedPushHost)
 			if ip == allowedPushHost {
 				allowed = true
 			}
@@ -209,17 +208,14 @@ func execCommand(cmdString string, rid string) CheckResult {
 
 	Debugf(rid, "out: ", string(out))
 	if err != nil {
-		Debugf(rid, "err: ", err)
 		if out == nil {
 			out = []byte("UKNOWN: unknown output\n")
 		}
-		Debugf(rid, "out: ", string(out))
+	}
+	if msg, ok := err.(*exec.ExitError); ok { // there is error code
+		returncode = msg.Sys().(syscall.WaitStatus).ExitStatus()
 	} else {
-		if msg, ok := err.(*exec.ExitError); ok { // there is error code
-			returncode = msg.Sys().(syscall.WaitStatus).ExitStatus()
-		} else {
-			returncode = 0
-		}
+		returncode = 0
 	}
 
 	Debugf(rid+"Got output: ", string(out[:]))
