@@ -1,6 +1,14 @@
 ```
 ./gorpe -fg -debug
 ```
+gorpe.gcfg
+```
+[commands]
+sleep1=sleep 1
+# with args
+sleep_arg=sleep "$ARG$"
+echo_args=echo "$ARG$ and $ARG$"
+```
 
 ```
 $ curl -k https://127.0.0.1:5666/sleep1
