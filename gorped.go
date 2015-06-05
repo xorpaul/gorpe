@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"log/syslog"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -40,7 +41,8 @@ type CheckResult struct {
 func httpHandler(w http.ResponseWriter, r *http.Request) {
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 	method := r.Method
-	Debugf("Incoming " + method + " request from IP: " + ip)
+	rid := randSeq()
+	Debugf(rid, "Incoming "+method+" request from IP: "+ip)
 
 	allowed := false
 	switch method {
@@ -51,42 +53,44 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !allowed {
-			Debugf("Incoming IP " + ip + " not in allowed_hosts config setting!")
+			Debugf(rid, "Incoming IP "+ip+" not in allowed_hosts config setting!")
 			abortText := "Your IP " + ip + " is not allowed to query anything from me!\n"
 			abortText += "Result Code: 3\n"
 			w.Write([]byte(abortText))
 			return
 		}
 
-		Debugf("Request path: ", r.URL.Path)
+		Debugf(rid, "Request path: ", r.URL.Path)
 
 		reqParts := strings.Split(r.URL.Path[1:], "/")
-		Debugf("Request path parts are: %q", reqParts)
+		Debugf(rid, "Request path parts are: %q", reqParts)
 		command := reqParts[0]
-		Debugf("Found command: ", command)
+		Debugf(rid, "Found command: ", command)
 		cmdArguments := reqParts[1:len(reqParts)]
-		Debugf("Found command arguments: %q", cmdArguments)
+		Debugf(rid, "Found command arguments: %q", cmdArguments)
 
 		w.Header().Set("Content-Type", "text/plain")
 
 		if _, ok := commandsCfgSection[command]; ok {
 			argCount := strings.Count(commandsCfgSection[command], "$ARG$")
-			Debugf("Found %q command arguments in this command", len(cmdArguments))
+			Debugf(rid, "Found %q command arguments in this command", len(cmdArguments))
 			if argCount > len(cmdArguments) {
 				w.Write([]byte("Too few command arguments!"))
 			} else {
 				cmdString := commandsCfgSection[command]
-				Debugf("Got command from config: ", cmdString)
+				Debugf(rid, "Got command from config: ", cmdString)
 				for _, arg := range cmdArguments {
 					// TODO: filter nasty chars
 					if arg != "" {
 						cmdString = strings.Replace(cmdString, "$ARG$", arg, 1)
-						Debugf("Replacing $ARG$ with %q results in %q", arg, cmdString)
+						Debugf(rid, "Replacing $ARG$ with %q results in %q", arg, cmdString)
 					}
 				}
-				Debugf("Replacing arguments and executing: ", cmdString)
-				cr := execCommand(cmdString)
-				Debugf("Last char: ", cr.text[len(cr.text)-1])
+				Debugf(rid, "Replacing arguments and executing: ", cmdString)
+				cr := execCommand(cmdString, rid)
+				if len(cr.text) == 0 {
+					cr.text = append(cr.text, "Received no text"...)
+				}
 				// Making sure that the check script output ends with a newline char
 				if cr.text[len(cr.text)-1] != 10 {
 					cr.text = append(cr.text, "\n"...)
@@ -103,13 +107,13 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	case "POST":
 		for _, allowedPushHost := range allowedPushHosts {
-			Debugf("comparing ", ip, " == ", allowedPushHost)
+			Debugf(rid, "comparing ", ip, " == ", allowedPushHost)
 			if ip == allowedPushHost {
 				allowed = true
 			}
 		}
 		if !allowed {
-			Debugf("Incoming IP " + ip + " not in allowed_push_hosts config setting!")
+			Debugf(rid, "Incoming IP "+ip+" not in allowed_push_hosts config setting!")
 			abortText := "Your IP " + ip + " is not allowed to upload!\n"
 			abortText += "Result Code: 3\n"
 			w.Write([]byte(abortText))
@@ -119,7 +123,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		//get the multipart reader for the request.
 		reader, err := r.MultipartReader()
 		if err != nil {
-			Debugf("Error while reading the Upload request: ", err)
+			Debugf(rid, "Error while reading the Upload request: ", err)
 			abortText := "Error while reading the Upload request!\n"
 			abortText += "Result Code: 3\n"
 			w.Write([]byte(abortText))
@@ -156,7 +160,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 			// ensure that the file is executable
 			if err := os.Chmod(uploadDir+fileName, 0775); err != nil {
-				Debugf("Error while changing permissions", err)
+				Debugf(rid, "Error while changing permissions", err)
 			}
 
 		}
@@ -165,14 +169,14 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		checkCommand := r.URL.Path[1:]
 		commandsCfgSection[checkCommand] = uploadDir + fileName
 
-		Debugf("Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
+		Debugf(rid, "Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
 		text := "File " + fileName + " uploaded successfully, sha256sum: " + sha256sum + "\n"
 		text += "Result Code: 0\n"
 		w.Write([]byte(text))
 		return
 
 	default:
-		Debugf("Incoming HTTP method " + method + " from IP " + ip + " not supported!")
+		Debugf(rid, "Incoming HTTP method "+method+" from IP "+ip+" not supported!")
 		abortText := "HTTP method " + method + " not supported!\n"
 		abortText += "Result Code: 3\n"
 		w.Write([]byte(abortText))
@@ -181,7 +185,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func execCommand(cmdString string) CheckResult {
+func execCommand(cmdString string, rid string) CheckResult {
 	returncode := 3
 	parts := strings.SplitN(cmdString, " ", 2)
 	checkScript := parts[0]
@@ -191,24 +195,25 @@ func execCommand(cmdString string) CheckResult {
 		//checkArguments, err := shellquote.Split(strings.Join(parts[1:len(parts)], " "))
 		foobar, err := shellquote.Split(parts[1])
 		if err != nil {
-			Debugf("err: ", err)
+			Debugf(rid, "err: ", err)
 		} else {
 			checkArguments = foobar
 		}
-		Debugf("checkArguments are %q: ", checkArguments)
+		Debugf(rid, "checkArguments are %q: ", checkArguments)
 	}
 
-	Debugf("checkScript: ", checkScript)
-	Debugf("checkArguments are %q: ", checkArguments)
+	Debugf(rid, "checkScript: ", checkScript)
+	Debugf(rid, "checkArguments are %q: ", checkArguments)
 
 	out, err := exec.Command(checkScript, checkArguments...).Output()
 
+	Debugf(rid, "out: ", string(out))
 	if err != nil {
-		Debugf("err: ", err)
+		Debugf(rid, "err: ", err)
 		if out == nil {
 			out = []byte("UKNOWN: unknown output\n")
 		}
-		Debugf("out: ", string(out))
+		Debugf(rid, "out: ", string(out))
 	} else {
 		if msg, ok := err.(*exec.ExitError); ok { // there is error code
 			returncode = msg.Sys().(syscall.WaitStatus).ExitStatus()
@@ -217,8 +222,8 @@ func execCommand(cmdString string) CheckResult {
 		}
 	}
 
-	Debugf("Got output: ", string(out[:]))
-	Debugf("Got return code: ", returncode)
+	Debugf(rid+"Got output: ", string(out[:]))
+	Debugf(rid+"Got return code: ", returncode)
 	return CheckResult{out, returncode}
 }
 
@@ -306,6 +311,17 @@ func Debugf(format string, args ...interface{}) {
 	if mainCfgSection["debug"] != "0" {
 		log.Print("DEBUG "+format, args)
 	}
+}
+
+// randSeq returns a fixed length random string to identify each request in the log
+// http://stackoverflow.com/a/22892986/682847
+func randSeq() string {
+	b := make([]rune, 8)
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b) + " "
 }
 
 func main() {

@@ -5,7 +5,7 @@ gorped
 *.a
 *.so
 *.pem
-*.gcfg
+config.gcfg
 *.swp
 
 # Folders
