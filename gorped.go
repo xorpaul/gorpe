@@ -14,17 +14,22 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"code.google.com/p/gcfg"
 	"github.com/kballard/go-shellquote"
 	"github.com/xorpaul/gencerts"
 )
 
+var start time.Time
+var buildtime string
 var mainCfgSection = make(map[string]string)
 var commandsCfgSection = make(map[string]string)
 var allowedHosts []string
 var allowedPushHosts []string
 var uploadDir string
+var requestCounter int
+var forbiddenRequestCounter int
 
 // ConfigSettings contianss the key value pairs from the config file
 type ConfigSettings struct {
@@ -53,7 +58,8 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !allowed {
-			Debugf(rid, "Incoming IP "+ip+" not in allowed_hosts config setting!")
+			forbiddenRequestCounter += 1
+			log.Printf(rid, "Incoming IP "+ip+" not in allowed_hosts config setting!")
 			abortText := "Your IP " + ip + " is not allowed to query anything from me!\n"
 			abortText += "Result Code: 3\n"
 			w.Write([]byte(abortText))
@@ -63,17 +69,26 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		Debugf(rid, "Request path: ", r.URL.Path)
 
 		reqParts := strings.Split(r.URL.Path[1:], "/")
-		Debugf(rid, "Request path parts are: %q", reqParts)
+		Debugf(rid, "Request path parts are: ", reqParts)
 		command := reqParts[0]
 		Debugf(rid, "Found command: ", command)
 		cmdArguments := reqParts[1:len(reqParts)]
-		Debugf(rid, "Found command arguments: %q", cmdArguments)
+		Debugf(rid, "Found command arguments: ", cmdArguments)
 
 		w.Header().Set("Content-Type", "text/plain")
+		if r.URL.Path == "/" {
+			requestCounter += 1
+			perfData := "|gorpe_uptime=" + strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
+			perfData += " requests=" + strconv.Itoa(requestCounter)
+			perfData += " forbiddenrequests=" + strconv.Itoa(forbiddenRequestCounter)
+			w.Write([]byte("GORPE version 1.0 Build time: " + buildtime + perfData + "\n"))
+			w.Write([]byte("Result Code: 0\n"))
+			return
+		}
 
 		if _, ok := commandsCfgSection[command]; ok {
 			argCount := strings.Count(commandsCfgSection[command], "$ARG$")
-			Debugf(rid, "Found %q command arguments in this command", len(cmdArguments))
+			Debugf(rid, "Found ", len(cmdArguments), " command arguments in this command")
 			if argCount > len(cmdArguments) {
 				w.Write([]byte("Too few command arguments!"))
 			} else {
@@ -83,7 +98,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 					// TODO: filter nasty chars
 					if arg != "" {
 						cmdString = strings.Replace(cmdString, "$ARG$", arg, 1)
-						Debugf(rid, "Replacing $ARG$ with %q results in %q", arg, cmdString)
+						Debugf(rid, "Replacing $ARG$ with ", arg, " resulting in ", cmdString)
 					}
 				}
 				Debugf(rid, "Replacing arguments and executing: ", cmdString)
@@ -102,8 +117,9 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			text := append([]byte("UKNOWN: Command "), command...)
-			text = append(text, " not found!\nReturncode: 0"...)
+			text = append(text, " not found!\nReturncode: 3\n"...)
 			w.Write(text)
+			return
 		}
 	case "POST":
 		for _, allowedPushHost := range allowedPushHosts {
@@ -112,7 +128,8 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !allowed {
-			Debugf(rid, "Incoming IP "+ip+" not in allowed_push_hosts config setting!")
+			forbiddenRequestCounter += 1
+			log.Printf(rid, "Incoming IP "+ip+" not in allowed_push_hosts config setting!")
 			abortText := "Your IP " + ip + " is not allowed to upload!\n"
 			abortText += "Result Code: 3\n"
 			w.Write([]byte(abortText))
@@ -168,14 +185,15 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		checkCommand := r.URL.Path[1:]
 		commandsCfgSection[checkCommand] = uploadDir + fileName
 
-		Debugf(rid, "Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
+		log.Printf(rid, "Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
 		text := "File " + fileName + " uploaded successfully, sha256sum: " + sha256sum + "\n"
 		text += "Result Code: 0\n"
 		w.Write([]byte(text))
 		return
 
 	default:
-		Debugf(rid, "Incoming HTTP method "+method+" from IP "+ip+" not supported!")
+		forbiddenRequestCounter += 1
+		log.Printf(rid, "Incoming HTTP method "+method+" from IP "+ip+" not supported!")
 		abortText := "HTTP method " + method + " not supported!\n"
 		abortText += "Result Code: 3\n"
 		w.Write([]byte(abortText))
@@ -185,6 +203,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func execCommand(cmdString string, rid string) CheckResult {
+	requestCounter += 1
 	returncode := 3
 	parts := strings.SplitN(cmdString, " ", 2)
 	checkScript := parts[0]
@@ -198,11 +217,11 @@ func execCommand(cmdString string, rid string) CheckResult {
 		} else {
 			checkArguments = foobar
 		}
-		Debugf(rid, "checkArguments are %q: ", checkArguments)
+		Debugf(rid, "checkArguments are: ", checkArguments)
 	}
 
 	Debugf(rid, "checkScript: ", checkScript)
-	Debugf(rid, "checkArguments are %q: ", checkArguments)
+	Debugf(rid, "checkArguments are: ", checkArguments)
 
 	out, err := exec.Command(checkScript, checkArguments...).Output()
 
@@ -210,6 +229,8 @@ func execCommand(cmdString string, rid string) CheckResult {
 	if err != nil {
 		if out == nil {
 			out = []byte("UKNOWN: unknown output\n")
+			returncode = 3
+			return CheckResult{out, returncode}
 		}
 	}
 	if msg, ok := err.(*exec.ExitError); ok { // there is error code
@@ -314,6 +335,7 @@ func Debugf(format string, args ...interface{}) {
 func randSeq() string {
 	b := make([]rune, 8)
 	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	rand.Seed(time.Now().UTC().UnixNano())
 	for i := range b {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
@@ -321,6 +343,7 @@ func randSeq() string {
 }
 
 func main() {
+	start = time.Now()
 
 	var configFile = flag.String("config", "/etc/gorpe/gorpe.gcfg", "which config file to use at startup, defaults to /etc/gorpe/gorpe.gcfg")
 	var foreGround = flag.Bool("fg", false, "if the log output should be sent to syslog or to STDOUT, defaults to false")
