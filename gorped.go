@@ -77,7 +77,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.ContainsAny(strings.Join(cmdArguments, ""), nasty_metachars) {
 			forbiddenRequestCounter += 1
 			log.Print(rid + "Command arguments are not allowed to contain any of: " + nasty_metachars)
-			CheckResult{"Command arguments are not allowed to contain any of: " + nasty_metachars, 3}.Exit(w)
+			CheckResult{"Found nasty meta character in command arguments!", 3}.Exit(w)
 			return
 		}
 
