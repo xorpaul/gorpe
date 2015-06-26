@@ -32,7 +32,7 @@ var uploadDir string
 var requestCounter int
 var forbiddenRequestCounter int
 var failedRequestCounter int
-var nasty_metachars string = "|`&><'\"\\[]{};\\n"
+var nasty_metachars string = "|`&><'\"\\[]{};\n"
 
 // ConfigSettings contains the key value pairs from the config file
 type ConfigSettings struct {
