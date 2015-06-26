@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"log/syslog"
@@ -30,8 +31,9 @@ var allowedPushHosts []string
 var uploadDir string
 var requestCounter int
 var forbiddenRequestCounter int
+var nasty_metachars string = "|`&><'\"\\[]{};\n"
 
-// ConfigSettings contianss the key value pairs from the config file
+// ConfigSettings contains the key value pairs from the config file
 type ConfigSettings struct {
 	main     map[string]string
 	commands map[string]string
@@ -39,7 +41,7 @@ type ConfigSettings struct {
 
 // CheckResult represent the result of an check script
 type CheckResult struct {
-	text       []byte
+	text       string
 	returncode int
 }
 
@@ -47,7 +49,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 	method := r.Method
 	rid := randSeq()
-	Debugf(rid, "Incoming "+method+" request from IP: "+ip)
+	Debugf(rid + "Incoming " + method + " request from IP: " + ip)
 
 	allowed := false
 	switch method {
@@ -59,21 +61,27 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			forbiddenRequestCounter += 1
-			log.Printf(rid, "Incoming IP "+ip+" not in allowed_hosts config setting!")
-			abortText := "Your IP " + ip + " is not allowed to query anything from me!\n"
-			abortText += "Result Code: 3\n"
-			w.Write([]byte(abortText))
+			log.Print(rid, "Incoming IP "+ip+" not in allowed_hosts config setting!")
+			CheckResult{"Your IP " + ip + " is not allowed to query anything from me!", 3}.Exit(w)
 			return
 		}
 
-		Debugf(rid, "Request path: ", r.URL.Path)
+		Debugf(rid + "Request path: " + r.URL.Path)
 
 		reqParts := strings.Split(r.URL.Path[1:], "/")
-		Debugf(rid, "Request path parts are: ", reqParts)
+		Debugf(rid + "Request path parts are: " + strings.Join(reqParts, " "))
 		command := reqParts[0]
-		Debugf(rid, "Found command: ", command)
+		Debugf(rid + "Found command: " + command)
 		cmdArguments := reqParts[1:len(reqParts)]
-		Debugf(rid, "Found command arguments: ", cmdArguments)
+		Debugf(rid + "Found command arguments: " + strings.Join(cmdArguments, " "))
+		for _, arg := range cmdArguments {
+			if strings.ContainsAny(arg, nasty_metachars) {
+				forbiddenRequestCounter += 1
+				log.Print(rid, "Command arguments are not allowed to contain any of: ", nasty_metachars)
+				CheckResult{"Command arguments are not allowed to contain any of: " + nasty_metachars, 3}.Exit(w)
+				return
+			}
+		}
 
 		w.Header().Set("Content-Type", "text/plain")
 		if r.URL.Path == "/" {
@@ -81,39 +89,36 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			perfData := "|gorpe_uptime=" + strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
 			perfData += " requests=" + strconv.Itoa(requestCounter)
 			perfData += " forbiddenrequests=" + strconv.Itoa(forbiddenRequestCounter)
-			w.Write([]byte("GORPE version 1.0 Build time: " + buildtime + perfData + "\n"))
-			w.Write([]byte("Result Code: 0\n"))
+			CheckResult{"GORPE version 1.0 Build time: " + buildtime + perfData, 0}.Exit(w)
 			return
 		}
 
 		if _, ok := commandsCfgSection[command]; ok {
 			argCount := strings.Count(commandsCfgSection[command], "$ARG$")
-			Debugf(rid, "Found ", len(cmdArguments), " command arguments in this command")
+			Debugf(rid + "Found " + string(len(cmdArguments)) + " command arguments in this command")
 			if argCount > len(cmdArguments) {
 				w.Write([]byte("Too few command arguments!"))
 			} else {
 				cmdString := commandsCfgSection[command]
-				Debugf(rid, "Got command from config: ", cmdString)
+				Debugf(rid + "Got command from config: " + cmdString)
 				for _, arg := range cmdArguments {
 					// TODO: filter nasty chars
 					if arg != "" {
 						cmdString = strings.Replace(cmdString, "$ARG$", arg, 1)
-						Debugf(rid, "Replacing $ARG$ with ", arg, " resulting in ", cmdString)
+						Debugf(rid + "Replacing $ARG$ with " + arg + " resulting in " + cmdString)
 					}
 				}
-				Debugf(rid, "Replacing arguments and executing: ", cmdString)
+				Debugf(rid + "Replacing arguments and executing: " + cmdString)
 				cr := execCommand(cmdString, rid)
 				if len(cr.text) == 0 {
-					cr.text = append(cr.text, "Received no text"...)
+					cr.text += "Received no text"
 				}
 				// Making sure that the check script output ends with a newline char
 				if cr.text[len(cr.text)-1] != 10 {
-					cr.text = append(cr.text, "\n"...)
+					cr.text += "\n"
 				}
-				output := append(cr.text, "Returncode: "...)
-				output = strconv.AppendInt(output, int64(cr.returncode), 10)
-				output = append(output, "\n"...)
-				w.Write(output)
+				output := cr.text + "Returncode: " + strconv.Itoa(cr.returncode) + "\n"
+				w.Write([]byte(output))
 			}
 		} else {
 			text := append([]byte("UKNOWN: Command "), command...)
@@ -129,20 +134,16 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			forbiddenRequestCounter += 1
-			log.Printf(rid, "Incoming IP "+ip+" not in allowed_push_hosts config setting!")
-			abortText := "Your IP " + ip + " is not allowed to upload!\n"
-			abortText += "Result Code: 3\n"
-			w.Write([]byte(abortText))
+			log.Print(rid, "Incoming IP "+ip+" not in allowed_push_hosts config setting!")
+			CheckResult{"Your IP " + ip + " is not allowed to upload!", 3}.Exit(w)
 			return
 		}
 
 		//get the multipart reader for the request.
 		reader, err := r.MultipartReader()
 		if err != nil {
-			Debugf(rid, "Error while reading the Upload request: ", err)
-			abortText := "Error while reading the Upload request!\n"
-			abortText += "Result Code: 3\n"
-			w.Write([]byte(abortText))
+			Debugf(rid + "Error while reading the Upload request: " + fmt.Sprint(err))
+			CheckResult{"Error while reading the Upload request!", 3}.Exit(w)
 			return
 		}
 
@@ -176,7 +177,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 			// ensure that the file is executable
 			if err := os.Chmod(uploadDir+fileName, 0775); err != nil {
-				Debugf(rid, "Error while changing permissions", err)
+				Debugf(rid + "Error while changing permissions" + fmt.Sprint(err))
 			}
 
 		}
@@ -185,18 +186,14 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		checkCommand := r.URL.Path[1:]
 		commandsCfgSection[checkCommand] = uploadDir + fileName
 
-		log.Printf(rid, "Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
-		text := "File " + fileName + " uploaded successfully, sha256sum: " + sha256sum + "\n"
-		text += "Result Code: 0\n"
-		w.Write([]byte(text))
+		log.Print(rid, "Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
+		CheckResult{"File " + fileName + " uploaded successfully, sha256sum: " + sha256sum, 0}.Exit(w)
 		return
 
 	default:
 		forbiddenRequestCounter += 1
-		log.Printf(rid, "Incoming HTTP method "+method+" from IP "+ip+" not supported!")
-		abortText := "HTTP method " + method + " not supported!\n"
-		abortText += "Result Code: 3\n"
-		w.Write([]byte(abortText))
+		log.Print(rid, "Incoming HTTP method "+method+" from IP "+ip+" not supported!")
+		CheckResult{"HTTP method " + method + " not supported!", 3}.Exit(w)
 		return
 	}
 
@@ -213,24 +210,22 @@ func execCommand(cmdString string, rid string) CheckResult {
 		//checkArguments, err := shellquote.Split(strings.Join(parts[1:len(parts)], " "))
 		foobar, err := shellquote.Split(parts[1])
 		if err != nil {
-			Debugf(rid, "err: ", err)
+			Debugf(rid + "err: " + fmt.Sprint(err))
 		} else {
 			checkArguments = foobar
 		}
-		Debugf(rid, "checkArguments are: ", checkArguments)
 	}
 
-	Debugf(rid, "checkScript: ", checkScript)
-	Debugf(rid, "checkArguments are: ", checkArguments)
+	Debugf(rid + "checkScript: " + checkScript)
+	Debugf(rid + "checkArguments are: " + strings.Join(checkArguments, " "))
 
 	out, err := exec.Command(checkScript, checkArguments...).Output()
 
-	Debugf(rid, "out: ", string(out))
+	Debugf(rid + "out: " + string(out))
 	if err != nil {
 		if out == nil {
-			out = []byte("UKNOWN: unknown output\n")
 			returncode = 3
-			return CheckResult{out, returncode}
+			return CheckResult{"UKNOWN: unknown output\n", 3}
 		}
 	}
 	if msg, ok := err.(*exec.ExitError); ok { // there is error code
@@ -239,9 +234,9 @@ func execCommand(cmdString string, rid string) CheckResult {
 		returncode = 0
 	}
 
-	Debugf(rid+"Got output: ", string(out[:]))
-	Debugf(rid+"Got return code: ", returncode)
-	return CheckResult{out, returncode}
+	Debugf(rid + "Got output: " + string(out[:]))
+	Debugf(rid + "Got return code: " + strconv.Itoa(returncode))
+	return CheckResult{string(out), returncode}
 }
 
 // readConfigfile creates the mainCfgSection and commandsCfgSection structs
@@ -275,12 +270,11 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 
 	Debugf("Found main config settings:")
 	for _, n := range cfgMain.Names() {
-		Debugf(n, " = ", *cfgMain.Vals[cfgMain.Idx(n)])
+		Debugf(n + " = " + *cfgMain.Vals[cfgMain.Idx(n)])
 	}
 
 	if allowed_hosts, ok := mainCfgSection["allowed_hosts"]; ok {
 		allowedHosts = strings.Split(allowed_hosts, ",")
-		Debugf("allowedHosts:", allowedHosts)
 	} else {
 		log.Print("allowed_hosts config setting missing! Exiting!")
 		os.Exit(1)
@@ -289,7 +283,6 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 	// TODO: make upload feature optional
 	if allowed_push_hosts, ok := mainCfgSection["allowed_push_hosts"]; ok {
 		allowedPushHosts = strings.Split(allowed_push_hosts, ",")
-		Debugf("allowedPushHosts:", allowedPushHosts)
 	} else {
 		Debugf("No push hosts for check upload configured!")
 	}
@@ -297,14 +290,13 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 	// TODO: make upload feature optional
 	if upload_dir, ok := mainCfgSection["upload_dir"]; ok {
 		uploadDir = upload_dir
-		Debugf("uploadDir:", uploadDir)
 	} else {
 		Debugf("No upload_dir configured!")
 	}
 
 	// TODO: make upload feature optional
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		log.Printf("upload_dir '%s' inaccessible", uploadDir)
+		log.Print("upload_dir '%s' inaccessible", uploadDir)
 		os.Exit(1)
 	} else {
 		if !strings.HasSuffix(uploadDir, "/") {
@@ -316,7 +308,7 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 	// Names(): iterate over variables with undefined order and case
 	Debugf("Found commands config settings:")
 	for _, n := range cfgCommands.Names() {
-		Debugf(n, " = ", *cfgCommands.Vals[cfgCommands.Idx(n)])
+		Debugf(n + " = " + *cfgCommands.Vals[cfgCommands.Idx(n)])
 		commandsCfgSection[n] = *cfgCommands.Vals[cfgCommands.Idx(n)]
 	}
 
@@ -324,9 +316,9 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 }
 
 // Debugf is a helper function for debug logging if mainCfgSection["debug"] is set
-func Debugf(format string, args ...interface{}) {
+func Debugf(s string) {
 	if mainCfgSection["debug"] != "0" {
-		log.Print("DEBUG "+format, args)
+		log.Print("DEBUG " + fmt.Sprint(s))
 	}
 }
 
@@ -340,6 +332,15 @@ func randSeq() string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b) + " "
+}
+
+// Exit is a helper function to output a check result in a standardized way
+func (checkresult CheckResult) Exit(w http.ResponseWriter) {
+	if !(checkresult.returncode != 0 || checkresult.returncode != 1 || checkresult.returncode != 2 || checkresult.returncode != 3) {
+		checkresult.returncode = 3
+	}
+	w.Write([]byte(checkresult.text + "\nResult Code: " + strconv.Itoa(checkresult.returncode) + "\n"))
+	return
 }
 
 func main() {
@@ -364,7 +365,7 @@ func main() {
 	}
 
 	if _, err := os.Stat(*configFile); os.IsNotExist(err) {
-		log.Printf("could not find config file: %s", *configFile)
+		log.Print("could not find config file: %s", *configFile)
 		os.Exit(1)
 	}
 
@@ -385,16 +386,16 @@ func main() {
 	for _, filename := range certFilenames {
 		if _, err := os.Stat(filename); os.IsNotExist(err) {
 			// generate certs
-			Debugf("Certificate file: ", filename, " not found! Generating certificate...\n")
+			Debugf("Certificate file: " + filename + " not found! Generating certificate...\n")
 			gencerts.GenerateCert(certFilenames["cert"], certFilenames["key"])
 			break
 		} else {
-			Debugf("Certificate file: ", filename, " found. Skipping certificate generation\n")
+			Debugf("Certificate file: " + filename + " found. Skipping certificate generation\n")
 		}
 	}
 
 	http.HandleFunc("/", httpHandler)
-	log.Printf("Listening on https://%s:%s/", configSettings.main["server_address"], configSettings.main["server_port"])
+	log.Print("Listening on https://" + configSettings.main["server_address"] + ":" + configSettings.main["server_port"] + "/")
 	//err := spdy.ListenAndServeSpdyOnly(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
 	err := http.ListenAndServeTLS(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
 	if err != nil {
