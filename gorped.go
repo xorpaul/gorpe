@@ -31,7 +31,8 @@ var allowedPushHosts []string
 var uploadDir string
 var requestCounter int
 var forbiddenRequestCounter int
-var nasty_metachars string = "|`&><'\"\\[]{};\n"
+var failedRequestCounter int
+var nasty_metachars string = "|`&><'\"\\[]{};\\n"
 
 // ConfigSettings contains the key value pairs from the config file
 type ConfigSettings struct {
@@ -61,7 +62,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			forbiddenRequestCounter += 1
-			log.Print(rid, "Incoming IP "+ip+" not in allowed_hosts config setting!")
+			log.Print(rid + "Incoming IP " + ip + " not in allowed_hosts config setting!")
 			CheckResult{"Your IP " + ip + " is not allowed to query anything from me!", 3}.Exit(w)
 			return
 		}
@@ -71,38 +72,36 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		reqParts := strings.Split(r.URL.Path[1:], "/")
 		Debugf(rid + "Request path parts are: " + strings.Join(reqParts, " "))
 		command := reqParts[0]
-		Debugf(rid + "Found command: " + command)
 		cmdArguments := reqParts[1:len(reqParts)]
 		Debugf(rid + "Found command arguments: " + strings.Join(cmdArguments, " "))
-		for _, arg := range cmdArguments {
-			if strings.ContainsAny(arg, nasty_metachars) {
-				forbiddenRequestCounter += 1
-				log.Print(rid, "Command arguments are not allowed to contain any of: ", nasty_metachars)
-				CheckResult{"Command arguments are not allowed to contain any of: " + nasty_metachars, 3}.Exit(w)
-				return
-			}
+		if strings.ContainsAny(strings.Join(cmdArguments, ""), nasty_metachars) {
+			forbiddenRequestCounter += 1
+			log.Print(rid + "Command arguments are not allowed to contain any of: " + nasty_metachars)
+			CheckResult{"Command arguments are not allowed to contain any of: " + nasty_metachars, 3}.Exit(w)
+			return
 		}
 
-		w.Header().Set("Content-Type", "text/plain")
 		if r.URL.Path == "/" {
 			requestCounter += 1
 			perfData := "|gorpe_uptime=" + strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
 			perfData += " requests=" + strconv.Itoa(requestCounter)
 			perfData += " forbiddenrequests=" + strconv.Itoa(forbiddenRequestCounter)
+			perfData += " failedrequests=" + strconv.Itoa(failedRequestCounter)
 			CheckResult{"GORPE version 1.0 Build time: " + buildtime + perfData, 0}.Exit(w)
 			return
 		}
 
 		if _, ok := commandsCfgSection[command]; ok {
 			argCount := strings.Count(commandsCfgSection[command], "$ARG$")
-			Debugf(rid + "Found " + string(len(cmdArguments)) + " command arguments in this command")
+			Debugf(rid + "Found " + strconv.Itoa(len(cmdArguments)) + " command arguments in this command")
 			if argCount > len(cmdArguments) {
-				w.Write([]byte("Too few command arguments!"))
+				failedRequestCounter += 1
+				log.Print(rid + "Too few command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)))
+				CheckResult{"UNKNOWN: Too few command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)), 3}.Exit(w)
 			} else {
 				cmdString := commandsCfgSection[command]
 				Debugf(rid + "Got command from config: " + cmdString)
 				for _, arg := range cmdArguments {
-					// TODO: filter nasty chars
 					if arg != "" {
 						cmdString = strings.Replace(cmdString, "$ARG$", arg, 1)
 						Debugf(rid + "Replacing $ARG$ with " + arg + " resulting in " + cmdString)
@@ -117,13 +116,13 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 				if cr.text[len(cr.text)-1] != 10 {
 					cr.text += "\n"
 				}
-				output := cr.text + "Returncode: " + strconv.Itoa(cr.returncode) + "\n"
-				w.Write([]byte(output))
+				log.Print(rid + "Received command: " + command + ", got return code: " + strconv.Itoa(cr.returncode))
+				CheckResult{cr.text, cr.returncode}.Exit(w)
 			}
 		} else {
-			text := append([]byte("UKNOWN: Command "), command...)
-			text = append(text, " not found!\nReturncode: 3\n"...)
-			w.Write(text)
+			failedRequestCounter += 1
+			log.Print(rid + "Command " + command + " not found!")
+			CheckResult{"UKNOWN: Command " + command + " not found!", 3}.Exit(w)
 			return
 		}
 	case "POST":
@@ -134,7 +133,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			forbiddenRequestCounter += 1
-			log.Print(rid, "Incoming IP "+ip+" not in allowed_push_hosts config setting!")
+			log.Print(rid + "Incoming IP " + ip + " not in allowed_push_hosts config setting!")
 			CheckResult{"Your IP " + ip + " is not allowed to upload!", 3}.Exit(w)
 			return
 		}
@@ -186,13 +185,13 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		checkCommand := r.URL.Path[1:]
 		commandsCfgSection[checkCommand] = uploadDir + fileName
 
-		log.Print(rid, "Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
+		log.Print(rid+"Check Command:", checkCommand, " File ", fileName, "successfully uploaded and saved as ", uploadDir+fileName, " sha256sum: ", sha256sum)
 		CheckResult{"File " + fileName + " uploaded successfully, sha256sum: " + sha256sum, 0}.Exit(w)
 		return
 
 	default:
 		forbiddenRequestCounter += 1
-		log.Print(rid, "Incoming HTTP method "+method+" from IP "+ip+" not supported!")
+		log.Print(rid + "Incoming HTTP method " + method + " from IP " + ip + " not supported!")
 		CheckResult{"HTTP method " + method + " not supported!", 3}.Exit(w)
 		return
 	}
@@ -339,6 +338,7 @@ func (checkresult CheckResult) Exit(w http.ResponseWriter) {
 	if !(checkresult.returncode != 0 || checkresult.returncode != 1 || checkresult.returncode != 2 || checkresult.returncode != 3) {
 		checkresult.returncode = 3
 	}
+	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(checkresult.text + "\nResult Code: " + strconv.Itoa(checkresult.returncode) + "\n"))
 	return
 }
