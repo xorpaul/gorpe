@@ -32,7 +32,7 @@ var uploadDir string
 var requestCounter int
 var forbiddenRequestCounter int
 var failedRequestCounter int
-var nasty_metachars string = "|`&><'\"\\[]{};\n"
+var nastyMetachars = "|`&><'\"\\[]{};\n"
 
 // ConfigSettings contains the key value pairs from the config file
 type ConfigSettings struct {
@@ -61,7 +61,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !allowed {
-			forbiddenRequestCounter += 1
+			forbiddenRequestCounter++
 			log.Print(rid + "Incoming IP " + ip + " not in allowed_hosts config setting!")
 			CheckResult{"Your IP " + ip + " is not allowed to query anything from me!", 3}.Exit(w)
 			return
@@ -74,15 +74,15 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		command := reqParts[0]
 		cmdArguments := reqParts[1:len(reqParts)]
 		Debugf(rid + "Found command arguments: " + strings.Join(cmdArguments, " "))
-		if strings.ContainsAny(strings.Join(cmdArguments, ""), nasty_metachars) {
-			forbiddenRequestCounter += 1
-			log.Print(rid + "Command arguments are not allowed to contain any of: " + nasty_metachars)
+		if strings.ContainsAny(strings.Join(cmdArguments, ""), nastyMetachars) {
+			forbiddenRequestCounter++
+			log.Print(rid + "Command arguments are not allowed to contain any of: " + nastyMetachars)
 			CheckResult{"Found nasty meta character in command arguments!", 3}.Exit(w)
 			return
 		}
 
 		if r.URL.Path == "/" {
-			requestCounter += 1
+			requestCounter++
 			perfData := "|gorpe_uptime=" + strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
 			perfData += " requests=" + strconv.Itoa(requestCounter)
 			perfData += " forbiddenrequests=" + strconv.Itoa(forbiddenRequestCounter)
@@ -95,7 +95,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			argCount := strings.Count(commandsCfgSection[command], "$ARG$")
 			Debugf(rid + "Found " + strconv.Itoa(len(cmdArguments)) + " command arguments in this command")
 			if argCount > len(cmdArguments) {
-				failedRequestCounter += 1
+				failedRequestCounter++
 				log.Print(rid + "Too few command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)))
 				CheckResult{"UNKNOWN: Too few command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)), 3}.Exit(w)
 			} else {
@@ -120,7 +120,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 				CheckResult{cr.text, cr.returncode}.Exit(w)
 			}
 		} else {
-			failedRequestCounter += 1
+			failedRequestCounter++
 			log.Print(rid + "Command " + command + " not found!")
 			CheckResult{"UKNOWN: Command " + command + " not found!", 3}.Exit(w)
 			return
@@ -132,7 +132,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !allowed {
-			forbiddenRequestCounter += 1
+			forbiddenRequestCounter++
 			log.Print(rid + "Incoming IP " + ip + " not in allowed_push_hosts config setting!")
 			CheckResult{"Your IP " + ip + " is not allowed to upload!", 3}.Exit(w)
 			return
@@ -190,7 +190,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 
 	default:
-		forbiddenRequestCounter += 1
+		forbiddenRequestCounter++
 		log.Print(rid + "Incoming HTTP method " + method + " from IP " + ip + " not supported!")
 		CheckResult{"HTTP method " + method + " not supported!", 3}.Exit(w)
 		return
@@ -199,7 +199,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func execCommand(cmdString string, rid string) CheckResult {
-	requestCounter += 1
+	requestCounter++
 	returncode := 3
 	parts := strings.SplitN(cmdString, " ", 2)
 	checkScript := parts[0]
@@ -272,30 +272,31 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 		Debugf(n + " = " + *cfgMain.Vals[cfgMain.Idx(n)])
 	}
 
-	if allowed_hosts, ok := mainCfgSection["allowed_hosts"]; ok {
-		allowedHosts = strings.Split(allowed_hosts, ",")
+	if allowedHostsString, ok := mainCfgSection["allowed_hosts"]; ok {
+		allowedHosts = strings.Split(allowedHostsString, ",")
 	} else {
 		log.Print("allowed_hosts config setting missing! Exiting!")
 		os.Exit(1)
 	}
 
 	// TODO: make upload feature optional
-	if allowed_push_hosts, ok := mainCfgSection["allowed_push_hosts"]; ok {
-		allowedPushHosts = strings.Split(allowed_push_hosts, ",")
+	if allowedPushHostsString, ok := mainCfgSection["allowed_push_hosts"]; ok {
+		allowedPushHosts = strings.Split(allowedPushHostsString, ",")
 	} else {
 		Debugf("No push hosts for check upload configured!")
 	}
 
 	// TODO: make upload feature optional
-	if upload_dir, ok := mainCfgSection["upload_dir"]; ok {
-		uploadDir = upload_dir
+	if uploadDirString, ok := mainCfgSection["upload_dir"]; ok {
+		uploadDir = uploadDirString
+		log.Printf("using %s as upload_dir", uploadDir)
 	} else {
 		Debugf("No upload_dir configured!")
 	}
 
 	// TODO: make upload feature optional
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		log.Print("upload_dir '%s' inaccessible", uploadDir)
+		log.Printf("upload_dir '%s' inaccessible", uploadDir)
 		os.Exit(1)
 	} else {
 		if !strings.HasSuffix(uploadDir, "/") {
@@ -365,7 +366,7 @@ func main() {
 	}
 
 	if _, err := os.Stat(*configFile); os.IsNotExist(err) {
-		log.Print("could not find config file: %s", *configFile)
+		log.Printf("could not find config file: %s", *configFile)
 		os.Exit(1)
 	}
 
