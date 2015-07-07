@@ -2,10 +2,13 @@ package main
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"log/syslog"
 	"math/rand"
@@ -87,7 +90,11 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			perfData += " requests=" + strconv.Itoa(requestCounter)
 			perfData += " forbiddenrequests=" + strconv.Itoa(forbiddenRequestCounter)
 			perfData += " failedrequests=" + strconv.Itoa(failedRequestCounter)
-			CheckResult{"GORPE version 1.0 Build time: " + buildtime + perfData, 0}.Exit(w)
+			sslText := "SSL Client Verify disabled"
+			if mainCfgSection["verify_client_cert"] == "true" || mainCfgSection["verify_client_cert"] == "1" {
+				sslText = "SSL Client Verify enabled"
+			}
+			CheckResult{"GORPE version 1.1 " + sslText + " Build time: " + buildtime + perfData, 0}.Exit(w)
 			return
 		}
 
@@ -347,9 +354,11 @@ func (checkresult CheckResult) Exit(w http.ResponseWriter) {
 func main() {
 	start = time.Now()
 
-	var configFile = flag.String("config", "/etc/gorpe/gorpe.gcfg", "which config file to use at startup, defaults to /etc/gorpe/gorpe.gcfg")
-	var foreGround = flag.Bool("fg", false, "if the log output should be sent to syslog or to STDOUT, defaults to false")
-	var debugFlag = flag.Bool("debug", false, "log debug output, defaults to false")
+	var (
+		configFile = flag.String("config", "/etc/gorpe/gorpe.gcfg", "which config file to use at startup, defaults to /etc/gorpe/gorpe.gcfg")
+		foreGround = flag.Bool("fg", false, "if the log output should be sent to syslog or to STDOUT, defaults to false")
+		debugFlag  = flag.Bool("debug", false, "log debug output, defaults to false")
+	)
 
 	flag.Parse()
 
@@ -396,9 +405,53 @@ func main() {
 	}
 
 	http.HandleFunc("/", httpHandler)
+
+	// TLS stuff
+	tlsConfig := &tls.Config{}
+	//Use only modern ciphers
+	tlsConfig.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}
+	//Use only TLS v1.2
+	tlsConfig.MinVersion = tls.VersionTLS12
+
+	if mainCfgSection["verify_client_cert"] == "true" || mainCfgSection["verify_client_cert"] == "1" {
+
+		//Expect and verify client certificate against a CA cert
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+
+		if caFileString, ok := mainCfgSection["ca_file"]; ok {
+			caFile := caFileString
+			if _, err := os.Stat(caFile); os.IsNotExist(err) {
+				log.Printf("could not find CA file: %s", caFile)
+				os.Exit(1)
+			} else {
+				// Load CA cert
+				caCert, err := ioutil.ReadFile(caFile)
+				if err != nil {
+					log.Fatal(err)
+				}
+				caCertPool := x509.NewCertPool()
+				caCertPool.AppendCertsFromPEM(caCert)
+				tlsConfig.ClientCAs = caCertPool
+				log.Print("Expecting and verifing client certificate against " + caFile)
+			}
+		}
+
+	}
+	server := &http.Server{
+		Addr:      ":" + configSettings.main["server_port"],
+		TLSConfig: tlsConfig,
+	}
+
 	log.Print("Listening on https://" + configSettings.main["server_address"] + ":" + configSettings.main["server_port"] + "/")
 	//err := spdy.ListenAndServeSpdyOnly(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
-	err := http.ListenAndServeTLS(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
+	err := server.ListenAndServeTLS(certFilenames["cert"], certFilenames["key"])
 	if err != nil {
 		log.Fatal(err)
 	}
