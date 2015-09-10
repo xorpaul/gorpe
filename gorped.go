@@ -57,7 +57,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 	allowed := false
 	switch method {
-	case "GET":
+	case "GET", "POST":
 		for _, allowedHost := range allowedHosts {
 			if ip == allowedHost {
 				allowed = true
@@ -72,16 +72,19 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 		Debugf(rid + "Request path: " + r.URL.Path)
 
-		reqParts := strings.Split(r.URL.Path[1:], "/")
-		Debugf(rid + "Request path parts are: " + strings.Join(reqParts, " "))
-		command := reqParts[0]
-		cmdArguments := reqParts[1:len(reqParts)]
-		Debugf(rid + "Found command arguments: " + strings.Join(cmdArguments, " "))
-		if strings.ContainsAny(strings.Join(cmdArguments, ""), nastyMetachars) {
-			forbiddenRequestCounter++
-			log.Print(rid + "Command arguments are not allowed to contain any of: " + nastyMetachars)
-			CheckResult{"Found nasty meta character in command arguments!", 3}.Exit(w)
-			return
+		r.ParseForm()
+		command := r.URL.Path[1:]
+		var cmdArguments []string
+		for k, v := range r.Form {
+			value := strings.Join(v, "")
+			Debugf(rid + "Found command argument " + k + ": " + value)
+			if strings.ContainsAny(value, nastyMetachars) {
+				forbiddenRequestCounter++
+				log.Print(rid + "Command arguments are not allowed to contain any of: " + nastyMetachars)
+				CheckResult{"Found nasty meta character in command arguments!", 3}.Exit(w)
+				return
+			}
+			cmdArguments = append(cmdArguments, value)
 		}
 
 		if r.URL.Path == "/" {
@@ -94,7 +97,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			if mainCfgSection["verify_client_cert"] == "true" || mainCfgSection["verify_client_cert"] == "1" {
 				sslText = "SSL Client Verify enabled"
 			}
-			CheckResult{"GORPE version 1.1 " + sslText + " Build time: " + buildtime + perfData, 0}.Exit(w)
+			CheckResult{"GORPE version 1.2 " + sslText + " Build time: " + buildtime + perfData, 0}.Exit(w)
 			return
 		}
 
@@ -103,8 +106,8 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			Debugf(rid + "Found " + strconv.Itoa(len(cmdArguments)) + " command arguments in this command")
 			if argCount > len(cmdArguments) {
 				failedRequestCounter++
-				log.Print(rid + "Too few command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)))
-				CheckResult{"UNKNOWN: Too few command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)), 3}.Exit(w)
+				log.Print(rid + "Not enough command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)))
+				CheckResult{"UNKNOWN: Not enough command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)), 3}.Exit(w)
 			} else {
 				cmdString := commandsCfgSection[command]
 				Debugf(rid + "Got command from config: " + cmdString)
@@ -132,7 +135,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			CheckResult{"UKNOWN: Command " + command + " not found!", 3}.Exit(w)
 			return
 		}
-	case "POST":
+	case "PUT":
 		for _, allowedPushHost := range allowedPushHosts {
 			if ip == allowedPushHost {
 				allowed = true
