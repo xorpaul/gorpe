@@ -97,7 +97,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			if mainCfgSection["verify_client_cert"] == "true" || mainCfgSection["verify_client_cert"] == "1" {
 				sslText = "SSL Client Verify enabled"
 			}
-			CheckResult{"GORPE version 1.2 " + sslText + " Build time: " + buildtime + perfData, 0}.Exit(w)
+			CheckResult{"GORPE version 1.3 HTTP/2 " + sslText + " Build time: " + buildtime + perfData, 0}.Exit(w)
 			return
 		}
 
@@ -411,15 +411,6 @@ func main() {
 
 	// TLS stuff
 	tlsConfig := &tls.Config{}
-	//Use only modern ciphers
-	tlsConfig.CipherSuites = []uint16{tls.TLS_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}
 	//Use only TLS v1.2
 	tlsConfig.MinVersion = tls.VersionTLS12
 
