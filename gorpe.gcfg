@@ -1,16 +1,16 @@
 [main]
-server_port=5666
-server_address=127.0.0.1
-allowed_hosts=127.0.0.1
-allowed_push_hosts=127.0.0.1
-upload_dir=/tmp
+server-port=5666
+server-address=127.0.0.1
+allowed-hosts=127.0.0.1
+allowed-push-hosts=127.0.0.1
+upload-dir=/tmp
 debug=0
-command_timeout=60
-connection_timeout=300
-certs_dir=/etc/gorpe/ssl/
+command-timeout=60
+connection-timeout=300
+certs-dir=/etc/gorpe/ssl/
 
 [commands]
 sleep1=sleep 1
 # with args
-sleep_arg=sleep "$ARG$"
-echo_args=echo "$ARG$ and $ARG$"
+sleep-arg=sleep "$ARG$"
+echo-args=echo "$ARG$ and $ARG$"

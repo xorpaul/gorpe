@@ -20,9 +20,9 @@ import (
 	"syscall"
 	"time"
 
-	"code.google.com/p/gcfg"
 	"github.com/kballard/go-shellquote"
 	"github.com/xorpaul/gencerts"
+	"gopkg.in/gcfg.v1"
 )
 
 var start time.Time
@@ -65,7 +65,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			forbiddenRequestCounter++
-			log.Print(rid + "Incoming IP " + ip + " not in allowed_hosts config setting!")
+			log.Print(rid + "Incoming IP " + ip + " not in allowed-hosts config setting!")
 			CheckResult{"Your IP " + ip + " is not allowed to query anything from me!", 3}.Exit(w)
 			return
 		}
@@ -94,7 +94,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			perfData += " forbiddenrequests=" + strconv.Itoa(forbiddenRequestCounter)
 			perfData += " failedrequests=" + strconv.Itoa(failedRequestCounter)
 			sslText := "SSL Client Verify disabled"
-			if mainCfgSection["verify_client_cert"] == "true" || mainCfgSection["verify_client_cert"] == "1" {
+			if mainCfgSection["verify-client-cert"] == "true" || mainCfgSection["verify-client-cert"] == "1" {
 				sslText = "SSL Client Verify enabled"
 			}
 			CheckResult{"GORPE version 1.3 HTTP/2 " + sslText + " Build time: " + buildtime + perfData, 0}.Exit(w)
@@ -143,7 +143,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowed {
 			forbiddenRequestCounter++
-			log.Print(rid + "Incoming IP " + ip + " not in allowed_push_hosts config setting!")
+			log.Print(rid + "Incoming IP " + ip + " not in allowed-push-hosts config setting!")
 			CheckResult{"Your IP " + ip + " is not allowed to upload!", 3}.Exit(w)
 			return
 		}
@@ -282,32 +282,33 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 		Debugf(n + " = " + *cfgMain.Vals[cfgMain.Idx(n)])
 	}
 
-	if allowedHostsString, ok := mainCfgSection["allowed_hosts"]; ok {
+	if allowedHostsString, ok := mainCfgSection["allowed-hosts"]; ok {
 		allowedHosts = strings.Split(allowedHostsString, ",")
 	} else {
-		log.Print("allowed_hosts config setting missing! Exiting!")
+		log.Print("allowed-hosts config setting missing! Exiting!")
 		os.Exit(1)
 	}
 
 	// TODO: make upload feature optional
-	if allowedPushHostsString, ok := mainCfgSection["allowed_push_hosts"]; ok {
+	if allowedPushHostsString, ok := mainCfgSection["allowed-push-hosts"]; ok {
 		allowedPushHosts = strings.Split(allowedPushHostsString, ",")
 	} else {
 		Debugf("No push hosts for check upload configured!")
 	}
 
 	// TODO: make upload feature optional
-	if uploadDirString, ok := mainCfgSection["upload_dir"]; ok {
+	if uploadDirString, ok := mainCfgSection["upload-dir"]; ok {
 		uploadDir = uploadDirString
-		log.Printf("using %s as upload_dir", uploadDir)
+		log.Printf("using %s as upload-dir", uploadDir)
 	} else {
-		Debugf("No upload_dir configured!")
+		Debugf("No upload-dir configured!")
 	}
 
 	// TODO: make upload feature optional
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		log.Printf("upload_dir '%s' inaccessible", uploadDir)
-		os.Exit(1)
+		log.Printf("upload-dir '%s' inaccessible", uploadDir)
+		log.Printf("Trying to create upload-dir '%s'", uploadDir)
+		uploadDir = checkDirAndCreate(uploadDir, "upload-dir")
 	} else {
 		if !strings.HasSuffix(uploadDir, "/") {
 			uploadDir = uploadDir + "/"
@@ -330,6 +331,28 @@ func Debugf(s string) {
 	if mainCfgSection["debug"] != "0" {
 		log.Print("DEBUG " + fmt.Sprint(s))
 	}
+}
+
+// checkDirAndCreate tests if the given directory exists and tries to create it
+func checkDirAndCreate(dir string, name string) string {
+	if len(dir) != 0 {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			//log.Printf("checkDirAndCreate(): trying to create dir '%s' as %s", dir, name)
+			if err := os.MkdirAll(dir, 0777); err != nil {
+				log.Println("checkDirAndCreate(): Error: failed to create directory: " + dir)
+				os.Exit(1)
+			}
+		}
+	} else {
+		// TODO make dir optional
+		log.Println("checkDirAndCreate(): Error: dir setting '" + name + "' missing! Exiting!")
+		os.Exit(1)
+	}
+	if !strings.HasSuffix(dir, "/") {
+		dir = dir + "/"
+	}
+	Debugf("Using as " + name + ": " + dir)
+	return dir
 }
 
 // randSeq returns a fixed length random string to identify each request in the log
@@ -392,8 +415,8 @@ func main() {
 
 	// check if we need to generate certificates
 	var certFilenames = map[string]string{
-		"cert": mainCfgSection["certs_dir"] + "/cert.pem",
-		"key":  mainCfgSection["certs_dir"] + "/key.pem",
+		"cert": mainCfgSection["certs-dir"] + "/cert.pem",
+		"key":  mainCfgSection["certs-dir"] + "/key.pem",
 	}
 
 	for _, filename := range certFilenames {
@@ -414,12 +437,12 @@ func main() {
 	//Use only TLS v1.2
 	tlsConfig.MinVersion = tls.VersionTLS12
 
-	if mainCfgSection["verify_client_cert"] == "true" || mainCfgSection["verify_client_cert"] == "1" {
+	if mainCfgSection["verify-client-cert"] == "true" || mainCfgSection["verify-client-cert"] == "1" {
 
 		//Expect and verify client certificate against a CA cert
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 
-		if caFileString, ok := mainCfgSection["ca_file"]; ok {
+		if caFileString, ok := mainCfgSection["ca-file"]; ok {
 			caFile := caFileString
 			if _, err := os.Stat(caFile); os.IsNotExist(err) {
 				log.Printf("could not find CA file: %s", caFile)
@@ -439,12 +462,12 @@ func main() {
 
 	}
 	server := &http.Server{
-		Addr:      ":" + configSettings.main["server_port"],
+		Addr:      ":" + configSettings.main["server-port"],
 		TLSConfig: tlsConfig,
 	}
 
-	log.Print("Listening on https://" + configSettings.main["server_address"] + ":" + configSettings.main["server_port"] + "/")
-	//err := spdy.ListenAndServeSpdyOnly(":"+configSettings.main["server_port"], certFilenames["cert"], certFilenames["key"], nil)
+	log.Print("Listening on https://" + configSettings.main["server-address"] + ":" + configSettings.main["server-port"] + "/")
+	//err := spdy.ListenAndServeSpdyOnly(":"+configSettings.main["server-port"], certFilenames["cert"], certFilenames["key"], nil)
 	err := server.ListenAndServeTLS(certFilenames["cert"], certFilenames["key"])
 	if err != nil {
 		log.Fatal(err)
