@@ -1,3 +1,0 @@
-#!/bin/bash
-echo "exiting with 2"
-exit 2
