@@ -1,6 +1,8 @@
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 gorpe
 gorped
+*.tar.gz
+*.tar.bz2
 *.o
 *.a
 *.so
