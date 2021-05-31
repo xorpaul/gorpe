@@ -50,10 +50,6 @@ func ExecuteCommand(command string, timeout int, allowFail bool) ExecResult {
 		er.ReturnCode = msg.Sys().(syscall.WaitStatus).ExitStatus()
 		h.Debugf("Setting return code to " + strconv.Itoa(er.ReturnCode))
 	}
-	if allowFail && err != nil {
-		h.Debugf("Executing " + command + " took " + strconv.FormatFloat(duration, 'f', 5, 64) + "s")
-	} else {
-		h.Verbosef("Executing " + command + " took " + strconv.FormatFloat(duration, 'f', 5, 64) + "s")
-	}
+	h.Verbosef("Executing " + command + " took " + strconv.FormatFloat(duration, 'f', 5, 64) + "s")
 	return er
 }
