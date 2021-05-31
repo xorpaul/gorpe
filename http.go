@@ -86,7 +86,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				h.Debugf(rid + " Replacing arguments and executing: " + cmdString)
 				before := time.Now()
-				cr := h.ExecuteCommand(cmdString, config.Main.CommandTimeout, true)
+				cr := ExecuteCommand(cmdString, config.Main.CommandTimeout, true)
 				//strconv.FormatFloat(time.Since(before).Seconds(), 'f', 1, 64)
 				executionTime := time.Since(before).Seconds()
 				if len(cr.Output) == 0 {
