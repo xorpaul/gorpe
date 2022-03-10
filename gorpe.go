@@ -104,7 +104,7 @@ func main() {
 		if _, err := os.Stat(filename); os.IsNotExist(err) {
 			// generate certs
 			h.Debugf("Certificate file: " + filename + " not found! Generating certificate...\n")
-			gencerts.GenerateCert(certFilenames["cert"], certFilenames["key"])
+			gencerts.GenerateCert(certFilenames["cert"], certFilenames["key"], false)
 			break
 		} else {
 			h.Debugf("Certificate file: " + filename + " found. Skipping certificate generation\n")
