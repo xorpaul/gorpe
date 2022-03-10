@@ -96,8 +96,8 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 				if cr.Output[len(cr.Output)-1] != 10 {
 					cr.Output += "\n"
 				}
-				log.Print(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got return code: " + strconv.Itoa(cr.ReturnCode) + " and took " + strconv.FormatFloat(executionTime, 'f', 1, 64) + "s")
-				log.Print(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got output: " + cr.Output)
+				h.Debugf(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got return code: " + strconv.Itoa(cr.ReturnCode) + " and took " + strconv.FormatFloat(executionTime, 'f', 1, 64) + "s")
+				h.Debugf(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got output: " + cr.Output)
 				checkResult{cr.Output, cr.ReturnCode}.Exit(w)
 			}
 		} else {
