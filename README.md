@@ -77,32 +77,7 @@ Returncode: 0
 2015/06/05 16:30:40 DEBUG MaPEZQle Got return code: [0]
 ```
 
-### Upload feature
-A simple POST request saves the contents of the attached file in the directory configured with `upload_dir`:
-```
-$ curl -k -XPOST --header "Content-Type:multipart/form-data" -F file=@upload/exit0 https://127.0.0.1:5666/exit0
-File exit0 uploaded successfully, sha256sum: 3e9ac084c7a364d5daffe5cce11bc9e0a390aa2ee8cb2b1b25e26007b65be37e
-Result Code: 0
-```
-```
-curl -k -XPOST --header "Content-Type:multipart/form-data" -F file=@upload/exit1 https://127.0.0.1:5666/exit1
-File exit1 uploaded successfully, sha256sum: 67e1a85dd8179c51bc7a230ea849892079c82e35dbe6af46f99d508c3f192008
-Result Code: 0
-```
-
-After the successfull upload a SAH256 checksum is printed as the HTTP response and in the debug log:
-
-```
-2015/06/05 16:53:57 DEBUG XVlBzgba [Incoming POST request from IP: 127.0.0.1]
-2015/06/05 16:53:57 DEBUG XVlBzgba [Check Command: exit1  File  exit1 successfully uploaded and saved as  /tmp/exit1  sha256sum:  67e1a85dd8179c51bc7a230ea849892079c82e35dbe6af46f99d508c3f192008]
-2015/06/05 16:54:05 DEBUG iCMRAjWw [Incoming POST request from IP: 127.0.0.1]
-2015/06/05 16:54:05 DEBUG iCMRAjWw [Check Command: exit0  File  exit0 successfully uploaded and saved as  /tmp/exit0  sha256sum:  3e9ac084c7a364d5daffe5cce11bc9e0a390aa2ee8cb2b1b25e26007b65be37e]
-2015/06/05 16:54:09 DEBUG hTHctcuA [Incoming POST request from IP: 127.0.0.1]
-2015/06/05 16:54:09 DEBUG hTHctcuA [Check Command: exit3  File  exit3 successfully uploaded and saved as  /tmp/exit3  sha256sum:  d97fc09d490e28382b25efe85dd8ba53392856c2d90e086e41beceb7a6f6a4bc]
-2015/06/05 16:54:13 DEBUG xhxKQFDa [Incoming POST request from IP: 127.0.0.1]
-2015/06/05 16:54:13 DEBUG xhxKQFDa [Check Command: exit2  File  exit2 successfully uploaded and saved as  /tmp/exit2  sha256sum:  9303021249cb56ead69ac17d0ea66d32f246e41c2b50efbdc89c427848743024]
-```
-
+# How to execute commands on remote systems via GORPE
 The URI of the POST request gets used as the new command handler:
 
 ```
