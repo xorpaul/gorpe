@@ -11,7 +11,7 @@ main:
   ca_file: /etc/gorpe/ssl/gorperootca.pem
 
 commands:
-  exit1: exit 1
+  exit1: tests/exit1.sh
   sleep1: sleep 1
   # with args
   sleep_arg: sleep "$ARG$"
