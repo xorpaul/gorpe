@@ -1,6 +1,6 @@
 module github.com/xorpaul/gorpe
 
-go 1.21.4
+go 1.24.1
 
 require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
@@ -10,8 +10,8 @@ require (
 )
 
 require (
-	github.com/fatih/color v1.13.0 // indirect
-	github.com/mattn/go-colorable v0.1.9 // indirect
-	github.com/mattn/go-isatty v0.0.14 // indirect
-	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
+	github.com/fatih/color v1.18.0 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	golang.org/x/sys v0.31.0 // indirect
 )

@@ -1,0 +1,25 @@
+# github.com/fatih/color v1.18.0
+## explicit; go 1.17
+github.com/fatih/color
+# github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
+## explicit
+github.com/kballard/go-shellquote
+# github.com/mattn/go-colorable v0.1.14
+## explicit; go 1.18
+github.com/mattn/go-colorable
+# github.com/mattn/go-isatty v0.0.20
+## explicit; go 1.15
+github.com/mattn/go-isatty
+# github.com/xorpaul/gencerts v0.0.0-20210723164917-c7f46a05c6e5
+## explicit
+github.com/xorpaul/gencerts
+# github.com/xorpaul/gohelper v0.0.0-20230404143020-51a25f54cce7
+## explicit; go 1.17
+github.com/xorpaul/gohelper
+# golang.org/x/sys v0.31.0
+## explicit; go 1.23.0
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# gopkg.in/yaml.v2 v2.4.0
+## explicit; go 1.15
+gopkg.in/yaml.v2
