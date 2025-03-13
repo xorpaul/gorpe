@@ -1,8 +1,8 @@
 package main
 
 import (
-	"io/ioutil"
 	"log"
+	"os"
 
 	h "github.com/xorpaul/gohelper"
 	"gopkg.in/yaml.v2"
@@ -11,7 +11,7 @@ import (
 // readConfigfile creates the MainCfgSection and commandsCfgSection structs
 // from the gorpe config file
 func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
-	data, err := ioutil.ReadFile(configFile)
+	data, err := os.ReadFile(configFile)
 	if err != nil {
 		h.Fatalf("readConfigfile(): There was an error parsing the config file " + configFile + ": " + err.Error())
 	}
