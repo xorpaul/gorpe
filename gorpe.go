@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -61,7 +60,7 @@ func main() {
 
 	flag.Parse()
 
-	version = "2.0"
+	version = "2.1"
 	if *versionFlag {
 		fmt.Println("GORPE version", version, "Build time:", buildtime, "UTC")
 		os.Exit(0)
@@ -114,9 +113,17 @@ func main() {
 	http.HandleFunc("/", httpHandler)
 
 	// TLS stuff
-	tlsConfig := &tls.Config{}
-	//Use only TLS v1.2
-	tlsConfig.MinVersion = tls.VersionTLS12
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		},
+	}
 
 	if config.Main.VerifyClientCert == 1 {
 
@@ -129,7 +136,7 @@ func main() {
 			os.Exit(1)
 		} else {
 			// Load CA cert
-			caCert, err := ioutil.ReadFile(caFile)
+			caCert, err := os.ReadFile(caFile)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -140,8 +147,11 @@ func main() {
 		}
 	}
 	server := &http.Server{
-		Addr:      ":" + strconv.Itoa(config.Main.ServerPort),
-		TLSConfig: tlsConfig,
+		Addr:         ":" + strconv.Itoa(config.Main.ServerPort),
+		TLSConfig:    tlsConfig,
+		WriteTimeout: time.Duration(config.Main.CommandTimeout+5) * time.Second,
+		ReadTimeout:  time.Duration(config.Main.CommandTimeout+5) * time.Second,
+		IdleTimeout:  time.Duration(config.Main.CommandTimeout+5) * time.Second,
 	}
 
 	log.Print("Listening on https://" + config.Main.ServerAddress + ":" + strconv.Itoa(config.Main.ServerPort) + "/")
