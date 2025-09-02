@@ -8,11 +8,13 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/xorpaul/gencerts v0.0.0-20210723164917-c7f46a05c6e5 h1:Qa7YczQ04yUOxQL66+KrOBvZTElfae3ET8ciyREHIPw=
 github.com/xorpaul/gencerts v0.0.0-20210723164917-c7f46a05c6e5/go.mod h1:sU3myB+9I/zpOn6U1/Z0BDm+yPyiH5Ct7CP08I8TWuA=
-github.com/xorpaul/gohelper v0.0.0-20230404143020-51a25f54cce7 h1:H3s9ZQPVfPreVwBb11jFbVm3fcLEZt7e5+flVfsHIu0=
-github.com/xorpaul/gohelper v0.0.0-20230404143020-51a25f54cce7/go.mod h1:nKcisc9EDq0aoqjblVyKZ0wuemepvYX7wC+EtcjmgME=
+github.com/xorpaul/gohelper v0.0.1 h1:9n/BXtMd4KYBSN9cTAnmCrvBOmuJuT3zWg82G2aki80=
+github.com/xorpaul/gohelper v0.0.1/go.mod h1:vITkhT8XRujw/gCHOF7gG1mbyHyvttlp+s7SMCEILgs=
 golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
-golang.org/x/sys v0.31.0 h1:ioabZlmFYtWhL+TRYpcnNlLwhyxaM9kWTDEmfnprqik=
-golang.org/x/sys v0.31.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
+golang.org/x/sys v0.35.0 h1:vz1N37gP5bs89s7He8XuIYXpyY0+QlsKmzipCbUtyxI=
+golang.org/x/sys v0.35.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
+golang.org/x/term v0.34.0 h1:O/2T7POpk0ZZ7MAzMeWFSg6S5IpWd/RXDlM9hgM3DR4=
+golang.org/x/term v0.34.0/go.mod h1:5jC53AEywhIVebHgPVeg0mj8OD3VO9OzclacVrqpaAw=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v2 v2.4.0 h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=
