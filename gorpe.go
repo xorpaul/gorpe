@@ -19,7 +19,7 @@ import (
 
 var start time.Time
 var buildtime string
-var version string
+var buildversion string
 var config = ConfigSettings{}
 var requestCounter int
 var forbiddenRequestCounter int
@@ -60,9 +60,8 @@ func main() {
 
 	flag.Parse()
 
-	version = "2.1"
 	if *versionFlag {
-		fmt.Println("GORPE version", version, "Build time:", buildtime, "UTC")
+		fmt.Println("GORPE version", buildversion, "Build time:", buildtime, "UTC")
 		os.Exit(0)
 	}
 
@@ -78,7 +77,7 @@ func main() {
 		log.Print("logging to STDOUT")
 	}
 
-	log.Println("started GORPE version", version, "Build time:", buildtime, "UTC")
+	log.Println("started GORPE version", buildversion, "Build time:", buildtime, "UTC")
 
 	if _, err := os.Stat(*configFile); os.IsNotExist(err) {
 		log.Printf("could not find config file: %s", *configFile)

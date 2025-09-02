@@ -56,7 +56,8 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 		if r.URL.Path == "/" {
 			requestCounter++
-			perfData := "|gorpe_uptime=" + strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
+			gorpe_uptime := strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
+			perfData := "|gorpe_uptime=" + gorpe_uptime
 			perfData += " requests=" + strconv.Itoa(requestCounter)
 			perfData += " forbiddenrequests=" + strconv.Itoa(forbiddenRequestCounter)
 			perfData += " failedrequests=" + strconv.Itoa(failedRequestCounter)
@@ -64,7 +65,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			if config.Main.VerifyClientCert == 1 {
 				sslText = "SSL client certificate verification enabled"
 			}
-			checkResult{"GORPE version " + version + " HTTP/2 " + sslText + " Build time: " + buildtime + perfData, 0}.Exit(w)
+			checkResult{"GORPE version " + buildversion + " HTTP/2 " + sslText + " Build time: " + buildtime + "GORPE uptime: " + gorpe_uptime + perfData, 0}.Exit(w)
 			return
 		}
 
