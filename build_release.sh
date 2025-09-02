@@ -2,10 +2,10 @@
 set -e
 
 if [ $# -ne 2 ]; then
-  echo "need the version number and release comment as argument"
-  echo "e.g. ${0} 0.4.5 'fix local modules and modules with install_path purging bug #80 #82'"
-  echo "Aborting..."
-  exit 1
+	echo "need the version number and release comment as argument"
+	echo "e.g. ${0} 0.4.5 'fix local modules and modules with install_path purging bug #80 #82'"
+	echo "Aborting..."
+	exit 1
 fi
 #
 time go test -v
@@ -14,9 +14,9 @@ time go test -v
 version=${1#v}
 #
 if [ $? -ne 0 ]; then
-  echo "Tests unsuccessful"
-  echo "Aborting..."
-  exit 1
+	echo "Tests unsuccessful"
+	echo "Aborting..."
+	exit 1
 fi
 #
 #
@@ -39,19 +39,25 @@ export BUILDTIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
 export BUILDVERSION=$(git describe --tags)
 
 build() {
-  echo "building ${projectname}-$1-$2 with version ${version}"
-  env GOOS=$1 GOARCH=$2 go build -ldflags "-X main.buildtime=${BUILDTIME} -X main.buildversion=${BUILDVERSION}" -o build/${projectname}-v${version}-$1-$2
-  if [ ${#upx} -gt 0 ]; then
-    if [ $1 == "linux" ]; then
-      $upx build/${projectname}-v${version}-$1-$2
-    fi
-  fi
+	echo "building ${projectname}-$1-$2 with version ${version}"
+	env GOOS=$1 GOARCH=$2 go build -ldflags "-X main.buildtime=${BUILDTIME} -X main.buildversion=${BUILDVERSION}" -o build/${projectname}-v${version}-$1-$2
+	if [ ${#upx} -gt 0 ]; then
+		# upx only for linux builds as it corrupts the binary for MacOS
+		if [ $1 == "linux" ]; then
+			$upx build/${projectname}-v${version}-$1-$2
+		fi
+	fi
+	# always use zip though to compress the binaries also for MacOS
+	cd build
+	zip -r ${projectname}-v${version}-$1-$2.zip ${projectname}-v${version}-$1-$2
+	rm -rf ${projectname}-v${version}-$1-$2
+	cd ..
 }
 
 for os in darwin linux; do
-  for arch in arm64 amd64; do
-    build $os $arch
-  done
+	for arch in arm64 amd64; do
+		build $os $arch
+	done
 done
 
 gh auth status >/dev/null 2>&1 && echo "creating github release v${version}"
