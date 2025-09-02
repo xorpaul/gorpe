@@ -20,11 +20,16 @@ if [ $? -ne 0 ]; then
 fi
 #
 #
-echo "creating git tag v${1}"
-git tag v${1}
-echo "pushing git tag v${1}"
+echo "creating git tag v${version}"
+git tag v${version}
+echo "pushing git tag v${version}"
 git push -f --tags
 git push
+
+# Clean and create build directory
+echo "cleaning and creating build directory"
+rm -rf build
+mkdir -p build
 
 # try to get the project name from the current working directory
 projectname=${PWD##*/}
@@ -35,13 +40,12 @@ export BUILDVERSION=$(git describe --tags)
 
 build() {
   echo "building ${projectname}-$1-$2 with version ${version}"
-  env GOOS=$1 GOARCH=$2 go build -ldflags "-X main.buildtime=${BUILDTIME} -X main.buildversion=${BUILDVERSION}"
+  env GOOS=$1 GOARCH=$2 go build -ldflags "-X main.buildtime=${BUILDTIME} -X main.buildversion=${BUILDVERSION}" -o build/${projectname}-v${version}-$1-$2
   if [ ${#upx} -gt 0 ]; then
     if [ $1 == "linux" ]; then
-      $upx ${projectname}
+      $upx build/${projectname}-v${version}-$1-$2
     fi
   fi
-  zip ${projectname}-v${version}-$1-$2.zip ${projectname}
 }
 
 for os in darwin linux; do
@@ -50,5 +54,5 @@ for os in darwin linux; do
   done
 done
 
-test -z ${GITHUB_TOKEN} || echo "creating github release v${1}"
-test -z ${GITHUB_TOKEN} && echo "skipping github-release as GITHUB_TOKEN is not set" || gh release create --fail-on-no-commits --verify-tag --repo ${projectname} --title "v${1}" --notes "${2}" v${1} ./${projectname}-v${1}*.zip
+gh auth status >/dev/null 2>&1 && echo "creating github release v${version}"
+gh auth status >/dev/null 2>&1 && gh release create --fail-on-no-commits --verify-tag --repo xorpaul/${projectname} --title "v${version}" --notes "${2}" v${version} ./build/${projectname}-v${version}* || echo "skipping github-release as gh auth status failed"
