@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"log/syslog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -66,12 +65,9 @@ func main() {
 	}
 
 	if !*foreGround {
-		// http://technosophos.com/2013/09/14/using-gos-built-logger-log-syslog.html
-		// Configure logger to write to the syslog.
-		logwriter, e := syslog.New(syslog.LOG_NOTICE, "gorpe")
-		if e == nil {
-			log.SetOutput(logwriter)
-			log.Print("logging to syslog")
+		// Configure logger to write to the syslog on Unix systems, stdout on Windows
+		if err := setupSyslog(); err != nil {
+			log.Printf("Failed to setup syslog, falling back to stdout: %v", err)
 		}
 	} else {
 		log.Print("logging to STDOUT")
