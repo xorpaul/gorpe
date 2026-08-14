@@ -16,25 +16,42 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 	method := r.Method
 	rid := h.RandSeq()
 	checkHostnames, err := net.LookupAddr(ip)
+	checkHostname := ip
 	if err != nil {
 		log.Println(rid + " Error while resolving requesting ip: " + ip + " Error: " + err.Error())
+	} else if len(checkHostnames) > 0 {
+		checkHostname = checkHostnames[0]
 	}
-	checkHostname := checkHostnames[0]
 	h.Debugf(rid + " Incoming " + method + " request from IP: " + ip + " (" + checkHostname + ")")
 
 	allowed := false
 	switch method {
 	case "GET", "POST":
-		for _, allowedHost := range config.Main.AllowedHosts {
-			if ip == allowedHost {
+		for _, allowedIP := range config.Main.AllowedIPs {
+			if ip == allowedIP {
 				allowed = true
 			}
 		}
 		if !allowed {
 			forbiddenRequestCounter++
-			log.Print(rid + " Incoming IP " + ip + " (" + checkHostname + ") not in allowed_hosts config setting!")
+			log.Print(rid + " Incoming IP " + ip + " (" + checkHostname + ") not in allowed_ips config setting!")
 			checkResult{"Your IP " + ip + " (" + checkHostname + ") is not allowed to query anything from me!", 3}.Exit(w, r)
 			return
+		}
+
+		if config.Main.VerifyClientCert == 1 && len(config.Main.ClientAuthDNs) > 0 {
+			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+				forbiddenRequestCounter++
+				log.Print(rid + " No client certificate presented")
+				checkResult{"No client certificate presented", 3}.Exit(w, r)
+				return
+			}
+			if err := checkCertAuth(r.TLS.PeerCertificates[0]); err != nil {
+				forbiddenRequestCounter++
+				log.Printf("%s Client cert auth failed for %s: %v", rid, ip, err)
+				checkResult{"Client certificate not authorized: " + err.Error(), 3}.Exit(w, r)
+				return
+			}
 		}
 
 		h.Debugf(rid + " Request path: " + r.URL.Path)

@@ -6,6 +6,7 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/xorpaul/gencerts v0.0.0-20210723164917-c7f46a05c6e5
 	github.com/xorpaul/gohelper v0.0.1
+	golang.org/x/crypto v0.55.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 

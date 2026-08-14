@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"log/syslog"
 	"net"
 	"net/http"
 	"os"
@@ -55,15 +54,18 @@ var nastyMetachars = "|`&><'\"\\[]{};\n"
 // ConfigSettings contains the key value pairs from the config file
 type ConfigSettings struct {
 	Main struct {
-		ServerPort        int      `yaml:"server_port"`
-		ServerAddress     string   `yaml:"server_address"`
-		AllowedHosts      []string `yaml:"allowed_hosts"`
-		Debug             int      `yaml:"debug"`
-		CommandTimeout    int      `yaml:"command_timeout"`
-		ConnectionTimeout int      `yaml:"connection_timeout"`
-		CertsDir          string   `yaml:"certs_dir"`
-		VerifyClientCert  int      `yaml:"verify_client_cert"`
-		CaFile            string   `yaml:"ca_file"`
+		ServerPort              int      `yaml:"server_port"`
+		ServerAddress           string   `yaml:"server_address"`
+		AllowedIPs              []string `yaml:"allowed_ips"`
+		Debug                   int      `yaml:"debug"`
+		CommandTimeout          int      `yaml:"command_timeout"`
+		ConnectionTimeout       int      `yaml:"connection_timeout"`
+		CertsDir                string   `yaml:"certs_dir"`
+		VerifyClientCert        int      `yaml:"verify_client_cert"`
+		CaFile                  string   `yaml:"ca_file"`
+		ClientAuthDNs           []string `yaml:"client_auth_dns"`
+		ClientAuthIssuer        []string `yaml:"client_auth_issuer"`
+		ClientAuthIssuerCAFiles []string `yaml:"client_auth_issuer_ca_files"`
 	} `yaml:"main"`
 	Commands map[string]string `yaml:"commands"`
 }
@@ -92,12 +94,8 @@ func main() {
 	}
 
 	if !*foreGround {
-		// http://technosophos.com/2013/09/14/using-gos-built-logger-log-syslog.html
-		// Configure logger to write to the syslog.
-		logwriter, e := syslog.New(syslog.LOG_NOTICE, "gorpe")
-		if e == nil {
-			log.SetOutput(logwriter)
-			log.Print("logging to syslog")
+		if err := setupSyslog(); err != nil {
+			log.Printf("Failed to setup syslog, falling back to stdout: %v", err)
 		}
 	} else {
 		log.Print("logging to STDOUT")
@@ -113,6 +111,13 @@ func main() {
 	log.Print("using config file: ", *configFile)
 	config = readConfigfile(*configFile, *debugFlag)
 	log.Print("found commands: ", config.Commands)
+
+	if len(config.Main.ClientAuthDNs) > 0 {
+		if err := loadIssuerCACerts(config.Main.ClientAuthIssuerCAFiles); err != nil {
+			log.Printf("failed to load client_auth_issuer_ca_files: %v", err)
+			os.Exit(1)
+		}
+	}
 
 	if *debugFlag || config.Main.Debug != 0 {
 		h.Debug = true

@@ -16,6 +16,9 @@ github.com/xorpaul/gencerts
 # github.com/xorpaul/gohelper v0.0.1
 ## explicit; go 1.24.4
 github.com/xorpaul/gohelper
+# golang.org/x/crypto v0.55.0
+## explicit; go 1.25.0
+golang.org/x/crypto/ocsp
 # golang.org/x/sys v0.47.0
 ## explicit; go 1.25.0
 golang.org/x/sys/plan9
