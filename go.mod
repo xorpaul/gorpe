@@ -1,6 +1,6 @@
 module github.com/xorpaul/gorpe
 
-go 1.25.0
+go 1.26.5
 
 require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
