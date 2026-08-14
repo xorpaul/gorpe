@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"log/syslog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,10 +18,35 @@ import (
 	h "github.com/xorpaul/gohelper"
 )
 
+// keepAliveListener wraps a net.TCPListener and sets SO_KEEPALIVE +
+// TCP_KEEPIDLE/TCP_KEEPINTVL on every accepted connection. The default
+// listener Go gives us via http.Server.ListenAndServeTLS sets the period
+// to 3 minutes, which means stateful firewalls / conntrack / NAT hops
+// along the path can drop a flow that goes silent during a long-running
+// command (gorpe buffers stdout+stderr until the child exits, so no
+// app-layer bytes flow on the wire) before the kernel ever sends a probe.
+type keepAliveListener struct {
+	*net.TCPListener
+	period time.Duration
+}
+
+func (ln keepAliveListener) Accept() (net.Conn, error) {
+	tc, err := ln.AcceptTCP()
+	if err != nil {
+		return nil, err
+	}
+	if ln.period > 0 {
+		tc.SetKeepAlive(true)
+		tc.SetKeepAlivePeriod(ln.period)
+	}
+	return tc, nil
+}
+
 var start time.Time
 var buildtime string
 var buildversion string
 var config = ConfigSettings{}
+var keepAlivePeriod time.Duration
 var requestCounter int
 var forbiddenRequestCounter int
 var failedRequestCounter int
@@ -153,8 +179,25 @@ func main() {
 		IdleTimeout:  time.Duration(config.Main.CommandTimeout+5) * time.Second,
 	}
 
-	log.Print("Listening on https://" + config.Main.ServerAddress + ":" + strconv.Itoa(config.Main.ServerPort) + "/")
-	err := server.ListenAndServeTLS(certFilenames["cert"], certFilenames["key"])
+	keepAlivePeriod = time.Duration(config.Main.ConnectionTimeout) * time.Second
+	if keepAlivePeriod <= 0 {
+		// Fall back to a conservative default that defeats typical
+		// stateful-firewall / NAT idle-flow timeouts (commonly 60-120s).
+		keepAlivePeriod = 30 * time.Second
+	}
+
+	rawListener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	listener := keepAliveListener{
+		TCPListener: rawListener.(*net.TCPListener),
+		period:      keepAlivePeriod,
+	}
+
+	log.Printf("Listening on https://%s:%d/ with TCP keepalive period %s",
+		config.Main.ServerAddress, config.Main.ServerPort, keepAlivePeriod)
+	err = server.ServeTLS(listener, certFilenames["cert"], certFilenames["key"])
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -5,7 +5,11 @@ main:
     - 127.0.0.1
   debug: 0
   command_timeout: 60
-  connection_timeout: 300
+  # TCP keepalive period (seconds) for accepted connections. Set below
+  # the typical 60-120 s idle-flow timeout enforced by stateful
+  # firewalls / NAT along the operator-to-target path. 0 falls back to
+  # 30 s in code.
+  connection_timeout: 30
   certs_dir: /etc/gorpe/ssl/
   verify_client_cert: 0
   ca_file: /etc/gorpe/ssl/gorperootca.pem

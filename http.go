@@ -65,7 +65,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			if config.Main.VerifyClientCert == 1 {
 				sslText = "SSL client certificate verification enabled"
 			}
-			checkResult{"GORPE version " + buildversion + " HTTP/2 " + sslText + " Build time: " + buildtime + "GORPE uptime: " + gorpe_uptime + perfData, 0}.Exit(w)
+			checkResult{"GORPE version " + buildversion + " with TCP keepalive period " + keepAlivePeriod.String() + " HTTP/2 " + sslText + " Build time: " + buildtime + "GORPE uptime: " + gorpe_uptime + perfData, 0}.Exit(w)
 			return
 		}
 
