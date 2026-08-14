@@ -33,7 +33,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		if !allowed {
 			forbiddenRequestCounter++
 			log.Print(rid + " Incoming IP " + ip + " (" + checkHostname + ") not in allowed_hosts config setting!")
-			checkResult{"Your IP " + ip + " (" + checkHostname + ") is not allowed to query anything from me!", 3}.Exit(w)
+			checkResult{"Your IP " + ip + " (" + checkHostname + ") is not allowed to query anything from me!", 3}.Exit(w, r)
 			return
 		}
 
@@ -48,7 +48,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			if strings.ContainsAny(value, nastyMetachars) {
 				forbiddenRequestCounter++
 				log.Print(rid + " Command arguments are not allowed to contain any of: " + nastyMetachars)
-				checkResult{"Found nasty meta character in command arguments!", 3}.Exit(w)
+				checkResult{"Found nasty meta character in command arguments!", 3}.Exit(w, r)
 				return
 			}
 			cmdArguments = append(cmdArguments, value)
@@ -65,7 +65,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			if config.Main.VerifyClientCert == 1 {
 				sslText = "SSL client certificate verification enabled"
 			}
-			checkResult{"GORPE version " + buildversion + " with TCP keepalive period " + keepAlivePeriod.String() + " HTTP/2 " + sslText + " Build time: " + buildtime + "GORPE uptime: " + gorpe_uptime + perfData, 0}.Exit(w)
+			checkResult{"GORPE version " + buildversion + " with TCP keepalive period " + keepAlivePeriod.String() + " HTTP/2 " + sslText + " Build time: " + buildtime + "GORPE uptime: " + gorpe_uptime + perfData, 0}.Exit(w, r)
 			return
 		}
 
@@ -75,7 +75,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 			if argCount > len(cmdArguments) {
 				failedRequestCounter++
 				log.Print(rid + " Not enough command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)))
-				checkResult{"UNKNOWN: Not enough command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)), 3}.Exit(w)
+				checkResult{"UNKNOWN: Not enough command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)), 3}.Exit(w, r)
 			} else {
 				cmdString := config.Commands[command]
 				h.Debugf(rid + " Got command from config: " + cmdString)
@@ -99,18 +99,18 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				h.Debugf(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got return code: " + strconv.Itoa(cr.ReturnCode) + " and took " + strconv.FormatFloat(executionTime, 'f', 1, 64) + "s")
 				h.Debugf(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got output: " + cr.Output)
-				checkResult{cr.Output, cr.ReturnCode}.Exit(w)
+				checkResult{cr.Output, cr.ReturnCode}.Exit(w, r)
 			}
 		} else {
 			failedRequestCounter++
 			log.Print(rid + " Command " + command + " not found!")
-			checkResult{"UKNOWN: Command " + command + " not found!", 3}.Exit(w)
+			checkResult{"UKNOWN: Command " + command + " not found!", 3}.Exit(w, r)
 			return
 		}
 	default:
 		forbiddenRequestCounter++
 		log.Print(rid + " Incoming HTTP method " + method + " from IP " + ip + " not supported!")
-		checkResult{"HTTP method " + method + " not supported!", 3}.Exit(w)
+		checkResult{"HTTP method " + method + " not supported!", 3}.Exit(w, r)
 		return
 	}
 
