@@ -37,8 +37,17 @@ func readConfigfile(configFile string, debugFlag bool) ConfigSettings {
 		log.Printf("%+v\n", config.Main)
 	}
 
-	if len(config.Main.AllowedHosts) <= 0 {
-		h.Fatalf("allowed_hosts config setting missing! Exiting!")
+	if len(config.Main.AllowedIPs) <= 0 {
+		h.Fatalf("allowed_ips config setting missing! Exiting!")
+	}
+
+	if len(config.Main.ClientAuthDNs) > 0 {
+		if config.Main.VerifyClientCert != 1 {
+			h.Fatalf("client_auth_dns requires verify_client_cert: 1")
+		}
+		if len(config.Main.ClientAuthIssuerCAFiles) == 0 {
+			h.Fatalf("client_auth_dns requires client_auth_issuer_ca_files to be set")
+		}
 	}
 
 	h.Debugf("Found commands config settings:")

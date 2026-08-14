@@ -8,11 +8,16 @@ All notable changes to this project will be documented in this file.
 
 - **JSON Response Mode**: Clients can now request JSON-formatted output by sending `Accept: application/json` — useful for programmatic consumers of gorpe responses
 - **TCP Keepalive Wiring**: `connection_timeout` config value is now applied as the TCP keepalive period for accepted connections, ensuring stale connections are detected and cleaned up
+- **Client cert DN authorization**: When `verify_client_cert: 1` and `client_auth_dns` are configured, gorpe now validates the client certificate's Subject DN against the allow-list (OpenSSL slash format), checks the Issuer DN against `client_auth_issuer`, and verifies revocation via OCSP (preferred) or CRL fallback with per-cert caching until the CA's `NextUpdate`
+
+### ⚠️ Breaking Changes
+
+- Config key `allowed_hosts` renamed to `allowed_ips` — update `gorpe.yaml` (and the Puppet template that renders it) before deploying v2.3.0
 
 ### 🔧 Maintenance
 
 - Updated to Go 1.26.5
-- Updated vendor dependencies for 2026
+- Updated vendor dependencies for 2026 (added `golang.org/x/crypto` for OCSP support)
 
 ---
 
