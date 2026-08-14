@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -19,8 +20,19 @@ type ExecResult struct {
 	Output     string
 }
 
-// Exit is a helper function to output a check result in a standardized way
-func (cr checkResult) Exit(w http.ResponseWriter) {
+// Exit writes a check result. When the caller sends Accept: application/json
+// it returns {"exit_code": N, "output": "..."} with the raw exit code (not
+// clamped), so callers like gorpe-mcp get puppet exit codes 4 and 6 intact.
+// The legacy text protocol keeps the 0-3 clamp for Nagios/Icinga compat.
+func (cr checkResult) Exit(w http.ResponseWriter, r *http.Request) {
+	if r != nil && r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"exit_code": cr.returncode,
+			"output":    cr.text,
+		})
+		return
+	}
 	if !h.InBetween(cr.returncode, 0, 3) {
 		cr.returncode = 3
 	}
