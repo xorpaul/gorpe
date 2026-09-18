@@ -254,8 +254,10 @@ func checkOCSP(cert, issuer *x509.Certificate) (revoked bool, nextUpdate time.Ti
 		if readErr != nil {
 			continue
 		}
-		// Pass issuer so the OCSP response signature is verified.
-		parsed, err := ocsp.ParseResponse(body, issuer)
+		// ParseResponseForCert verifies the signature and binds the response
+		// to this cert's serial number, preventing replay of a valid "good"
+		// response minted for a different certificate.
+		parsed, err := ocsp.ParseResponseForCert(body, cert, issuer)
 		if err != nil {
 			continue
 		}
@@ -295,13 +297,15 @@ func checkCRL(cert *x509.Certificate, issuer *x509.Certificate) (revoked bool, n
 			if err != nil {
 				continue
 			}
-			if issuer != nil {
-				if err := crl.CheckSignatureFrom(issuer); err != nil {
-					log.Printf("WARN: CRL from %s has invalid signature: %v", dp, err)
-					continue
-				}
-			} else {
-				log.Printf("WARN: cannot verify CRL signature from %s: issuer cert not loaded", dp)
+			if issuer == nil {
+				// Without the issuer cert we cannot verify the CRL signature;
+				// trusting an unverified CRL defeats the revocation check.
+				log.Printf("WARN: skipping CRL from %s: issuer cert not loaded, cannot verify signature", dp)
+				continue
+			}
+			if err := crl.CheckSignatureFrom(issuer); err != nil {
+				log.Printf("WARN: CRL from %s has invalid signature: %v", dp, err)
+				continue
 			}
 			crlCacheMu.Lock()
 			crlCache[dp] = crl
