@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v2.4.0] - 2026-09-18
+
+### 🔒 Security Fixes
+
+- **OCSP response serial binding**: `ocsp.ParseResponse` was replaced with `ocsp.ParseResponseForCert(body, cert, issuer)` — without the cert argument the library accepted any CA-signed "Good" response regardless of serial number, allowing a response minted for one certificate to be replayed to authenticate a different one
+- **Confirmed revocations now hard-fail**: A `*revokedError` sentinel distinguishes definitive OCSP/CRL revocation results from transient infrastructure errors; `checkCertAuth` hard-fails on the former and soft-fails only on the latter
+- **CRL signature verification**: `crl.CheckSignatureFrom(issuer)` is called after parsing every CRL; a CRL with an invalid or unverifiable signature is skipped rather than trusted
+- **Unverifiable CRL skipped**: When the issuer CA cert is not loaded, the CRL distribution point is skipped entirely instead of being used without signature verification
+
+### 🔧 Correctness Fixes
+
+- **HTTP timeout on revocation fetches**: OCSP and CRL HTTP calls now use a client with a 10 s timeout; previously the default client (no timeout) could block handler goroutines indefinitely on a slow PKI server
+- **DN formatting for non-UTF8 ASN.1 string types**: `subjectToSlashDN` used `fmt.Sprintf("%v")` on raw `interface{}` values, producing decimal byte-slice notation for `[]byte`-typed attributes and breaking DN matching; a type switch now handles `string` and `[]byte` correctly
+- **`issuerCerts` keyed by raw DER bytes**: The CA cert map is now keyed by `string(cert.RawSubject)` and looked up by `string(cert.RawIssuer)`, avoiding silent mismatches caused by ASN.1 string-type encoding differences (PrintableString vs UTF8String)
+- **Revocation cache pruning**: A background goroutine sweeps expired entries from the revocation cache once per hour, preventing unbounded growth in long-running deployments with cert renewals
+
+### 🧪 Tests
+
+- Added `certauth_test.go` with 10 automated tests covering the fixes above, including a live OCSP responder, CRL server, tampered-CRL rejection, OCSP replay detection, and soft-fail behaviour
+
+---
+
 ## [v2.3.0] - 2026-08-14
 
 ### ✨ New Features
