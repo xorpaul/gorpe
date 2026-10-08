@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### ✨ New Features
+
+- **Quote-safe argument substitution**: the command template is split into words *before* `$ARG$` is filled in, and argv is executed directly. An unquoted whole-word `$ARG$` is split into words honouring quotes inside the argument (`--since "30 days ago"` works); a quoted or embedded `$ARG$` (`'$ARG$'`, `$ARG$%`) receives the argument verbatim as one word, so quotes in an argument can no longer break out of the template's quoting. For every argument the old metacharacter filter allowed, the resulting argv is identical to before (verified against all 233 fleet commands)
+- **`relaxed_arg_commands`**: commands listed here only reject control characters in arguments, so regexes and quoted values (`-g 'a|b'`) pass. Only for commands that hand arguments to a program as an argv — never via a shell. Older binaries ignore the key
+- **Separate stdout/stderr in JSON mode**: `Accept: application/json` responses carry `stdout` and `stderr` next to the combined `output`. The text protocol keeps a single pipe, so Nagios/Icinga output interleaving is unchanged
+
+### 🐛 Bug Fixes
+
+- **`command_timeout` is enforced**: it was read but never applied. Timed-out commands get SIGTERM to their whole process group (so `sudo` relays it), then SIGKILL after 2s, and return UNKNOWN (3)
+- **Stable argument order**: `arg1, arg2, …, arg10` fill `$ARG$` in numeric order instead of Go's random map order
+- **Clearer metacharacter rejection**: the error names the character, its position, the argument and the command's forbidden set
+- **Unparseable arguments are rejected** with UNKNOWN (3) instead of silently running the command without arguments; a command that cannot be started returns 3 instead of 0
+- **IPv6 clients**: the client IP is parsed with `net.SplitHostPort`, so IPv6 addresses can match `allowed_ips`
+- Sample `gorpe.yaml` uses `allowed_ips`; README documents the form-field argument protocol (`arg1`…), not URL path segments
+
 ## [v2.4.0] - 2026-09-18
 
 ### 🔒 Security Fixes

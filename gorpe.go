@@ -51,6 +51,13 @@ var forbiddenRequestCounter int
 var failedRequestCounter int
 var nastyMetachars = "|`&><'\"\\[]{};\n"
 
+// relaxedMetachars is what remains forbidden for commands listed in
+// relaxed_arg_commands: control characters only. gorpe itself never uses a
+// shell, so quotes, | [] {} etc. are harmless as long as the command does not
+// hand its arguments to a shell (eval, sh -c, backticks) or to a program that
+// can run code or write files from them (awk, sed).
+var relaxedMetachars = "\x00\n\r"
+
 // ConfigSettings contains the key value pairs from the config file
 type ConfigSettings struct {
 	Main struct {
@@ -66,6 +73,10 @@ type ConfigSettings struct {
 		ClientAuthDNs           []string `yaml:"client_auth_dns"`
 		ClientAuthIssuer        []string `yaml:"client_auth_issuer"`
 		ClientAuthIssuerCAFiles []string `yaml:"client_auth_issuer_ca_files"`
+		// RelaxedArgCommands lists commands whose arguments may contain quotes and
+		// shell metacharacters (only control characters are rejected). Only add
+		// commands that pass their arguments to a program as an argv.
+		RelaxedArgCommands []string `yaml:"relaxed_arg_commands"`
 	} `yaml:"main"`
 	Commands map[string]string `yaml:"commands"`
 }

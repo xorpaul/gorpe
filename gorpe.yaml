@@ -1,7 +1,7 @@
 main:
   server_port: 5666
   server_address: 127.0.0.1
-  allowed_hosts: 
+  allowed_ips:
     - 127.0.0.1
   debug: 0
   command_timeout: 60
@@ -13,6 +13,9 @@ main:
   certs_dir: /etc/gorpe/ssl/
   verify_client_cert: 0
   ca_file: /etc/gorpe/ssl/gorperootca.pem
+  # commands whose arguments may contain quotes and | [] {} etc.
+  relaxed_arg_commands:
+    - echo_relaxed
 
 commands:
   exit1: tests/exit1.sh
@@ -20,3 +23,4 @@ commands:
   # with args
   sleep_arg: sleep "$ARG$"
   echo_args: echo "$ARG$ and $ARG$"
+  echo_relaxed: echo $ARG$
