@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v2.5.0] - 2026-10-08
 
 ### ✨ New Features
 
@@ -18,6 +18,16 @@ All notable changes to this project will be documented in this file.
 - **Unparseable arguments are rejected** with UNKNOWN (3) instead of silently running the command without arguments; a command that cannot be started returns 3 instead of 0
 - **IPv6 clients**: the client IP is parsed with `net.SplitHostPort`, so IPv6 addresses can match `allowed_ips`
 - Sample `gorpe.yaml` uses `allowed_ips`; README documents the form-field argument protocol (`arg1`…), not URL path segments
+
+### 🔧 Maintenance
+
+- Updated vendored Go modules: `golang.org/x/crypto` v0.55.0 → v0.57.0, `golang.org/x/sys` v0.47.0 → v0.48.0, `golang.org/x/term` v0.45.0 → v0.46.0, `github.com/mattn/go-colorable` v0.1.15 → v0.1.16
+
+### 🧪 Tests
+
+- Added `args_test.go` covering argument substitution: unquoted, quoted and embedded placeholders, argument order beyond `arg9`, unbalanced quotes, and the quote break-out case
+
+---
 
 ## [v2.4.0] - 2026-09-18
 
