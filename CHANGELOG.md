@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v2.5.1] - 2026-10-08
+
+### 🐛 Bug Fixes
+
+- **Commands that leave a child process running no longer return UNKNOWN**: v2.5.0 set `WaitDelay` on every command, and Go starts that timer as soon as the command exits, not only on timeout. If a background child inherited stdout/stderr and kept it open for more than 2s, `Wait` returned `exec: WaitDelay expired before I/O complete` and gorpe reported UNKNOWN (3) even though the command itself had exited 0 with its full output. gorpe now returns the command's own exit code and output after the grace period, and logs a warning that a child process was left holding the output open. Command timeouts are unaffected
+
+### 🧪 Tests
+
+- Added `exec_test.go` covering a command that leaves a child holding stderr (exit 0 and exit 2) and the `command_timeout` kill
+
+---
+
 ## [v2.5.0] - 2026-10-08
 
 ### ✨ New Features
