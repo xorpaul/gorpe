@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -128,6 +130,13 @@ func ExecuteCommand(argv []string, timeout int, allowFail bool, splitStreams boo
 	} else if msg, ok := err.(*exec.ExitError); ok { // there is error code
 		er.ReturnCode = msg.Sys().(syscall.WaitStatus).ExitStatus()
 		h.Debugf("Setting return code to " + strconv.Itoa(er.ReturnCode))
+	} else if errors.Is(err, exec.ErrWaitDelay) && c.ProcessState != nil {
+		// The command itself exited, but a child it left running (e.g. a
+		// background job inheriting stdout/stderr) kept the output pipe open
+		// past WaitDelay. That is the command's own business: report its exit
+		// code and the output written so far instead of failing the check.
+		er.ReturnCode = c.ProcessState.ExitCode()
+		log.Print("WARN: " + command + " exited with " + strconv.Itoa(er.ReturnCode) + " but left a child process holding its output open; returning without waiting for it")
 	} else if err != nil {
 		er.ReturnCode = 3
 		er.Output = "UNKNOWN: could not execute command: " + err.Error() + "\n" + er.Output
