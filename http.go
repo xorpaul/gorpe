@@ -1,18 +1,27 @@
 package main
 
 import (
+	"cmp"
+	"fmt"
 	"log"
+	"maps"
 	"net"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kballard/go-shellquote"
 	h "github.com/xorpaul/gohelper"
 )
 
 func httpHandler(w http.ResponseWriter, r *http.Request) {
-	ip := strings.Split(r.RemoteAddr, ":")[0]
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
 	method := r.Method
 	rid := h.RandSeq()
 	checkHostnames, err := net.LookupAddr(ip)
@@ -24,15 +33,9 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Debugf(rid + " Incoming " + method + " request from IP: " + ip + " (" + checkHostname + ")")
 
-	allowed := false
 	switch method {
 	case "GET", "POST":
-		for _, allowedIP := range config.Main.AllowedIPs {
-			if ip == allowedIP {
-				allowed = true
-			}
-		}
-		if !allowed {
+		if !slices.Contains(config.Main.AllowedIPs, ip) {
 			forbiddenRequestCounter++
 			log.Print(rid + " Incoming IP " + ip + " (" + checkHostname + ") not in allowed_ips config setting!")
 			checkResult{"Your IP " + ip + " (" + checkHostname + ") is not allowed to query anything from me!", 3}.Exit(w, r)
@@ -58,17 +61,25 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 		command := r.URL.Path[1:]
+		forbidden := nastyMetachars
+		if slices.Contains(config.Main.RelaxedArgCommands, command) {
+			forbidden = relaxedMetachars
+		}
 		var cmdArguments []string
-		for k, v := range r.Form {
-			value := strings.Join(v, "")
+		for _, k := range sortedArgKeys(r.Form) {
+			value := strings.Join(r.Form[k], "")
 			h.Debugf(rid + " Found command argument " + k + ": " + value)
-			if strings.ContainsAny(value, nastyMetachars) {
+			if i := strings.IndexAny(value, forbidden); i >= 0 {
 				forbiddenRequestCounter++
-				log.Print(rid + " Command arguments are not allowed to contain any of: " + nastyMetachars)
-				checkResult{"Found nasty meta character in command arguments!", 3}.Exit(w, r)
+				msg := fmt.Sprintf("Found nasty meta character %q at position %d in command argument %s! Forbidden characters for %s: %q", value[i], i, k, command, forbidden)
+				log.Print(rid + " " + msg)
+				checkResult{msg, 3}.Exit(w, r)
 				return
 			}
-			cmdArguments = append(cmdArguments, value)
+			// Empty arguments are skipped, as before: the next one fills the placeholder.
+			if value != "" {
+				cmdArguments = append(cmdArguments, value)
+			}
 		}
 
 		if r.URL.Path == "/" {
@@ -87,24 +98,17 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if _, ok := config.Commands[command]; ok {
-			argCount := strings.Count(config.Commands[command], "$ARG$")
 			h.Debugf(rid + " Found " + strconv.Itoa(len(cmdArguments)) + " command arguments in this command")
-			if argCount > len(cmdArguments) {
+			h.Debugf(rid + " Got command from config: " + config.Commands[command])
+			argv, err := buildArgv(config.Commands[command], cmdArguments)
+			if err != nil {
 				failedRequestCounter++
-				log.Print(rid + " Not enough command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)))
-				checkResult{"UNKNOWN: Not enough command arguments! Expected " + strconv.Itoa(argCount) + " and found " + strconv.Itoa(len(cmdArguments)), 3}.Exit(w, r)
+				log.Print(rid + " " + err.Error())
+				checkResult{"UNKNOWN: " + err.Error(), 3}.Exit(w, r)
 			} else {
-				cmdString := config.Commands[command]
-				h.Debugf(rid + " Got command from config: " + cmdString)
-				for _, arg := range cmdArguments {
-					if arg != "" {
-						cmdString = strings.Replace(cmdString, "$ARG$", arg, 1)
-						h.Debugf(rid + " Replacing $ARG$ with " + arg + " resulting in " + cmdString)
-					}
-				}
-				h.Debugf(rid + " Replacing arguments and executing: " + cmdString)
+				h.Debugf(rid + " Replacing arguments and executing: " + shellquote.Join(argv...))
 				before := time.Now()
-				cr := ExecuteCommand(cmdString, config.Main.CommandTimeout, true)
+				cr := ExecuteCommand(argv, config.Main.CommandTimeout, true, wantsJSON(r))
 				//strconv.FormatFloat(time.Since(before).Seconds(), 'f', 1, 64)
 				executionTime := time.Since(before).Seconds()
 				if len(cr.Output) == 0 {
@@ -116,7 +120,7 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				h.Debugf(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got return code: " + strconv.Itoa(cr.ReturnCode) + " and took " + strconv.FormatFloat(executionTime, 'f', 1, 64) + "s")
 				h.Debugf(rid + " Received check command: " + command + " from " + ip + " (" + checkHostname + ") got output: " + cr.Output)
-				checkResult{cr.Output, cr.ReturnCode}.Exit(w, r)
+				checkResult{cr.Output, cr.ReturnCode}.ExitWithStreams(w, r, cr)
 			}
 		} else {
 			failedRequestCounter++
@@ -131,4 +135,24 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+// sortedArgKeys returns the form keys ordered by their numeric suffix
+// (arg1, arg2, ..., arg10), so $ARG$ placeholders are filled in the order the
+// client sent them rather than in Go's random map iteration order.
+func sortedArgKeys(form url.Values) []string {
+	keys := slices.Collect(maps.Keys(form))
+	argNum := func(k string) (int, bool) {
+		n, err := strconv.Atoi(strings.TrimPrefix(k, "arg"))
+		return n, err == nil
+	}
+	slices.SortFunc(keys, func(a, b string) int {
+		na, oka := argNum(a)
+		nb, okb := argNum(b)
+		if oka && okb && na != nb {
+			return cmp.Compare(na, nb)
+		}
+		return strings.Compare(a, b)
+	})
+	return keys
 }
