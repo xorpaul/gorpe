@@ -43,6 +43,8 @@ main:
   debug: 0                      # 1 = verbose request logging
   command_timeout: 60           # seconds before a command is killed (SIGTERM to its
                                 # process group, SIGKILL 2s later); returns UNKNOWN
+  compress_min_bytes: 1024     # gzip responses of at least this size when the
+                                # client sends Accept-Encoding: gzip; 0 = off
   connection_timeout: 30        # TCP keepalive period in seconds; set below
                                 # the firewall/NAT idle timeout on your path
   certs_dir: /etc/gorpe/ssl/    # server cert/key location

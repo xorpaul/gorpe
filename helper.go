@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -61,6 +63,7 @@ func (cr checkResult) ExitWithStreams(w http.ResponseWriter, r *http.Request, er
 }
 
 func (cr checkResult) exit(w http.ResponseWriter, r *http.Request, er *ExecResult) {
+	var body bytes.Buffer
 	if wantsJSON(r) {
 		res := map[string]interface{}{
 			"exit_code": cr.returncode,
@@ -71,14 +74,72 @@ func (cr checkResult) exit(w http.ResponseWriter, r *http.Request, er *ExecResul
 			res["stderr"] = er.Stderr
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(res)
+		json.NewEncoder(&body).Encode(res)
+	} else {
+		if !h.InBetween(cr.returncode, 0, 3) {
+			cr.returncode = 3
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		body.WriteString(cr.text + "\nResult Code: " + strconv.Itoa(cr.returncode) + "\n")
+	}
+	writeBody(w, r, body.Bytes())
+}
+
+// defaultCompressMinBytes is used when compress_min_bytes is not set.
+const defaultCompressMinBytes = 1024
+
+// compressMinBytes returns the body size from which responses are gzipped;
+// 0 disables compression.
+func compressMinBytes() int {
+	if config.Main.CompressMinBytes == nil {
+		return defaultCompressMinBytes
+	}
+	return *config.Main.CompressMinBytes
+}
+
+// acceptsGzip reports whether the client listed gzip in Accept-Encoding
+// without q=0.
+func acceptsGzip(r *http.Request) bool {
+	for _, v := range r.Header.Values("Accept-Encoding") {
+		for _, part := range strings.Split(v, ",") {
+			fields := strings.Split(part, ";")
+			if !strings.EqualFold(strings.TrimSpace(fields[0]), "gzip") {
+				continue
+			}
+			rejected := false
+			for _, p := range fields[1:] {
+				p = strings.ReplaceAll(strings.TrimSpace(p), " ", "")
+				if strings.HasPrefix(p, "q=0") && strings.Trim(strings.TrimPrefix(p, "q="), "0.") == "" {
+					rejected = true
+				}
+			}
+			if !rejected {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// writeBody writes a fully buffered response body, gzip-compressed when the
+// client accepts it and the body reaches compress_min_bytes.
+func writeBody(w http.ResponseWriter, r *http.Request, body []byte) {
+	min := compressMinBytes()
+	w.Header().Add("Vary", "Accept-Encoding")
+	if min <= 0 || len(body) < min || !acceptsGzip(r) {
+		w.Write(body)
 		return
 	}
-	if !h.InBetween(cr.returncode, 0, 3) {
-		cr.returncode = 3
+	var buf bytes.Buffer
+	gz, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	gz.Write(body)
+	if err := gz.Close(); err != nil {
+		w.Write(body)
+		return
 	}
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(cr.text + "\nResult Code: " + strconv.Itoa(cr.returncode) + "\n"))
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Del("Content-Length")
+	w.Write(buf.Bytes())
 }
 
 // commandKillGrace is how long a timed-out command gets after SIGTERM before
