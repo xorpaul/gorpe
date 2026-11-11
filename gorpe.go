@@ -66,6 +66,7 @@ type ConfigSettings struct {
 		AllowedIPs              []string `yaml:"allowed_ips"`
 		Debug                   int      `yaml:"debug"`
 		CommandTimeout          int      `yaml:"command_timeout"`
+		CompressMinBytes        *int     `yaml:"compress_min_bytes"`
 		ConnectionTimeout       int      `yaml:"connection_timeout"`
 		CertsDir                string   `yaml:"certs_dir"`
 		VerifyClientCert        int      `yaml:"verify_client_cert"`
