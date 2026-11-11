@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - **gzip-compressed responses**: when the client sends `Accept-Encoding: gzip` and the response body is at least `compress_min_bytes` (default 1024, `0` = off), gorpe compresses it with gzip (`BestSpeed`) and sets `Content-Encoding: gzip`. Short check output stays unchanged. Go clients such as `check_gorpe` already request and decode gzip transparently, so large outputs (journal tails, JSON documents) and proxied requests transfer 5–10x less data without client changes. gzip was chosen over zstd/brotli because it needs no new dependency and is decoded by every HTTP client out of the box
 
+### 🔧 Maintenance
+
+- Updated vendored Go modules: `golang.org/x/crypto` v0.57.0 → v0.58.0, `golang.org/x/sys` v0.48.0 → v0.50.0, `golang.org/x/term` v0.46.0 → v0.48.0
+
 ---
 
 ## [v2.5.1] - 2026-10-08
